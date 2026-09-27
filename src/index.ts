@@ -42,8 +42,22 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => void shutdown("SIGINT"))
 process.on("SIGTERM", () => void shutdown("SIGTERM"))
 
-await bot.start({
-  drop_pending_updates: false,
-  allowed_updates: ["message", "callback_query"],
-  onStart: (me) => console.log(`Bot @${me.username} is running. Allowed users: ${config.ALLOWED_USER_IDS.join(", ")}`),
-})
+async function poll(): Promise<void> {
+  while (!stopping) {
+    try {
+      await bot.start({
+        drop_pending_updates: false,
+        allowed_updates: ["message", "callback_query"],
+        onStart: (me) => console.log(`Bot @${me.username} is running. Allowed users: ${config.ALLOWED_USER_IDS.join(", ")}`),
+      })
+      return
+    } catch (err) {
+      if (stopping) return
+      const conflict = String(err).includes("409")
+      console.error(conflict ? "Another instance is polling this bot token; retrying in 10s" : "Polling failed; retrying in 5s", err)
+      await Bun.sleep(conflict ? 10_000 : 5_000)
+    }
+  }
+}
+
+await poll()
