@@ -2,6 +2,7 @@ import type { Api } from "grammy"
 import { describeTool, truncate } from "./format"
 import type { Bridge, SessionEvent } from "./opencode"
 import { Reply } from "./reply"
+import type { ChatKey } from "./store"
 
 type TextBlock = { kind: "text"; key: string; text: string }
 type ToolBlock = { kind: "tool"; id: string; name: string; label: string; status: "running" | "ok" | "error" }
@@ -22,10 +23,11 @@ export class ChatView {
   constructor(
     api: Api,
     private readonly bridge: Bridge,
-    chatId: number,
+    readonly key: ChatKey,
     readonly sessionID: string,
+    private readonly onTitle?: (title: string) => void,
   ) {
-    this.reply = new Reply(api, chatId)
+    this.reply = new Reply(api, key)
     this.unsubscribe = bridge.subscribe(sessionID, (e) => this.onEvent(e))
   }
 
@@ -82,6 +84,9 @@ export class ChatView {
         break
       case "session.execution.interrupted":
         this.end(e.data.reason === "user" ? "⏹ Stopped" : `⏹ Interrupted (${e.data.reason})`)
+        break
+      case "session.renamed":
+        this.onTitle?.(e.data.title)
         break
       case "permission.asked":
         // The container is the sandbox: approve anything the config still routes to "ask".

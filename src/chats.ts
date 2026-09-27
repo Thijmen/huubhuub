@@ -1,16 +1,21 @@
 import type { Api, Context } from "grammy"
+import type { Chat, UserFromGetMe } from "grammy/types"
 import type { Config } from "./config"
+import { truncate } from "./format"
 import type { Attachment, Bridge } from "./opencode"
+import { threadParams } from "./reply"
 import { ChatView } from "./stream"
-import type { Store } from "./store"
+import type { ChatKey, Store } from "./store"
 import type { Transcriber } from "./transcribe"
 
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+const NEW_TOPIC_NAME = "New conversation"
 
-/** Owns per-chat views and turns Telegram input into OpenCode prompts. */
+/** Owns per-thread views and turns Telegram input into OpenCode prompts. */
 export class Chats {
-  private views = new Map<number, ChatView>()
+  private views = new Map<string, ChatView>()
+  private pendingAutoTitle = new Set<string>()
 
   constructor(
     private readonly api: Api,
@@ -18,37 +23,105 @@ export class Chats {
     private readonly store: Store,
     private readonly config: Config,
     private readonly transcriber: Transcriber | undefined,
+    private readonly me: () => UserFromGetMe | undefined,
   ) {}
 
-  async view(chatId: number): Promise<ChatView> {
-    const sessionID = await this.bridge.sessionFor(chatId)
-    const current = this.views.get(chatId)
+  async view(key: ChatKey): Promise<ChatView> {
+    const sessionID = await this.bridge.sessionFor(key)
+    const id = viewId(key)
+    const current = this.views.get(id)
     if (current?.sessionID === sessionID) return current
     current?.dispose()
-    const view = new ChatView(this.api, this.bridge, chatId, sessionID)
-    this.views.set(chatId, view)
+    const view = new ChatView(this.api, this.bridge, key, sessionID, (title) => void this.renameTopic(key, title))
+    this.views.set(id, view)
     return view
   }
 
-  async reset(chatId: number): Promise<string> {
-    const current = this.views.get(chatId)
-    if (current?.busy) await this.bridge.interrupt(current.sessionID).catch(() => {})
-    current?.dispose()
-    this.views.delete(chatId)
-    const sessionID = await this.bridge.resetSession(chatId)
-    await this.view(chatId)
-    return sessionID
+  /** Whether new conversations in this chat get their own topic. */
+  threaded(chat: Chat): boolean {
+    if (this.config.THREAD_MODE === "off") return false
+    if (chat.type === "private") return Boolean(this.me()?.has_topics_enabled)
+    return chat.type === "supergroup" && Boolean(chat.is_forum)
   }
 
-  async send(chatId: number, text: string, files: Attachment[] = []): Promise<void> {
-    const view = await this.view(chatId)
+  /**
+   * Start a new conversation. In threaded chats that is a new topic; otherwise the current
+   * session is replaced in place. Returns where the conversation lives.
+   */
+  async startNew(ctx: Context): Promise<{ key: ChatKey; sessionID: string; topic: boolean }> {
+    const from = keyOf(ctx)
+    if (this.threaded(ctx.chat!)) {
+      const topic = await this.createTopic(from)
+      if (topic) return { ...topic, topic: true }
+    }
+    const current = this.views.get(viewId(from))
+    if (current?.busy) await this.bridge.interrupt(current.sessionID).catch(() => {})
+    current?.dispose()
+    this.views.delete(viewId(from))
+    const sessionID = await this.bridge.resetSession(from)
+    await this.view(from)
+    return { key: from, sessionID, topic: false }
+  }
+
+  private async createTopic(from: ChatKey): Promise<{ key: ChatKey; sessionID: string } | undefined> {
+    try {
+      const topic = await this.api.createForumTopic(from.chatId, NEW_TOPIC_NAME)
+      const key = { chatId: from.chatId, threadId: topic.message_thread_id }
+      const sessionID = await this.bridge.openThread(key, from)
+      await this.view(key)
+      return { key, sessionID }
+    } catch (err) {
+      console.error(`Couldn't create a topic in chat ${from.chatId}; continuing in place`, err)
+      return undefined
+    }
+  }
+
+  /**
+   * Where a message should be answered. Messages sent outside any topic in a threaded private
+   * chat open a fresh topic, so every new conversation gets its own thread.
+   */
+  private async route(ctx: Context, preview: string): Promise<ChatKey> {
+    const key = keyOf(ctx)
+    if (key.threadId || ctx.chat?.type !== "private" || !this.threaded(ctx.chat)) {
+      this.adoptImplicitTopic(ctx, key)
+      return key
+    }
+    const topic = await this.createTopic(key)
+    if (!topic) return key
+    await this.api
+      .sendMessage(topic.key.chatId, `💬 ${truncate(preview, 500)}`, threadParams(topic.key))
+      .catch((err) => console.error("topic intro failed", err))
+    return topic.key
+  }
+
+  /** A topic Telegram named after the first message may be renamed once OpenCode picks a title. */
+  private adoptImplicitTopic(ctx: Context, key: ChatKey): void {
+    if (!key.threadId || this.store.get(key)) return
+    const created = ctx.msg?.reply_to_message?.forum_topic_created
+    if (created?.is_name_implicit) this.pendingAutoTitle.add(viewId(key))
+  }
+
+  private async renameTopic(key: ChatKey, title: string): Promise<void> {
+    if (!key.threadId || !title.trim()) return
+    const state = this.store.get(key)
+    const pending = this.pendingAutoTitle.delete(viewId(key))
+    if (!state?.autoTitle && !pending) return
+    this.store.clearAutoTitle(key)
+    await this.api
+      .editForumTopic(key.chatId, key.threadId, { name: truncate(title.trim(), 128) })
+      .catch((err) => console.error("topic rename failed", err))
+  }
+
+  async send(key: ChatKey, text: string, files: Attachment[] = []): Promise<void> {
+    const view = await this.view(key)
+    this.store.touch(key)
     await this.bridge.prompt(view.sessionID, text, files)
   }
 
   async handleText(ctx: Context): Promise<void> {
     const text = ctx.message?.text
     if (!ctx.chat || !text) return
-    await this.send(ctx.chat.id, text)
+    await this.send(await this.route(ctx, text), text)
   }
 
   async handlePhoto(ctx: Context): Promise<void> {
@@ -57,7 +130,8 @@ export class Chats {
     const largest = photos[photos.length - 1]!
     const bytes = await this.download(largest.file_id, largest.file_size)
     const mime = sniffImage(bytes) ?? "image/jpeg"
-    await this.send(ctx.chat.id, ctx.message?.caption || "Describe this image.", [
+    const caption = ctx.message?.caption || "Describe this image."
+    await this.send(await this.route(ctx, `🖼 ${caption}`), caption, [
       { uri: toDataUri(bytes, mime), name: `photo.${mime.split("/")[1]}` },
     ])
   }
@@ -75,7 +149,7 @@ export class Chats {
       return
     }
     const caption = ctx.message?.caption || (IMAGE_TYPES.has(mime) ? "Describe this image." : `Take a look at ${name}.`)
-    await this.send(ctx.chat.id, caption, [{ uri: toDataUri(bytes, mime), name }])
+    await this.send(await this.route(ctx, `📎 ${name}: ${caption}`), caption, [{ uri: toDataUri(bytes, mime), name }])
   }
 
   async handleVoice(ctx: Context): Promise<void> {
@@ -97,12 +171,14 @@ export class Chats {
       await ctx.reply("🎤 I couldn't make out any speech in that message.")
       return
     }
-    await ctx.reply(`🎤 <i>${escape(transcript)}</i>`, {
+    const key = await this.route(ctx, `🎤 ${transcript}`)
+    await this.api.sendMessage(key.chatId, `🎤 <i>${escape(transcript)}</i>`, {
       parse_mode: "HTML",
-      reply_parameters: { message_id: ctx.message!.message_id },
+      ...threadParams(key),
+      ...(key.threadId === keyOf(ctx).threadId ? { reply_parameters: { message_id: ctx.message!.message_id } } : {}),
     })
     const text = ctx.message?.caption ? `${ctx.message.caption}\n\n${transcript}` : transcript
-    await this.send(ctx.chat.id, text)
+    await this.send(key, text)
   }
 
   private async download(fileId: string, size?: number): Promise<Uint8Array> {
@@ -116,6 +192,16 @@ export class Chats {
 }
 
 export class UserError extends Error {}
+
+/** The conversation a message or button press belongs to. */
+export function keyOf(ctx: Context): ChatKey {
+  const msg = ctx.msg
+  return { chatId: ctx.chat!.id, threadId: msg?.is_topic_message ? (msg.message_thread_id ?? 0) : 0 }
+}
+
+function viewId(key: ChatKey): string {
+  return `${key.chatId}:${key.threadId}`
+}
 
 function toDataUri(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`

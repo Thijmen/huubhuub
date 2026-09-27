@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test"
+import { Database } from "bun:sqlite"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { isProbablyText, sniffImage } from "./chats"
-import { loadConfig, parseModelRef } from "./config"
+import { applySetting, loadConfig, parseModelRef } from "./config"
+import { parseEnvText, planEnvImport } from "./env-import"
 import { chunkText, describeTool, markdownToHtml } from "./format"
+import { parseMcpImport, splitCommand } from "./mcp-import"
+import { threadParams } from "./reply"
 import { Store } from "./store"
 
 describe("markdownToHtml", () => {
@@ -62,7 +66,8 @@ describe("config", () => {
   test("parses the allowlist", () => {
     const c = loadConfig({ TELEGRAM_BOT_TOKEN: "t", ALLOWED_USER_IDS: "1, 22 ,333" })
     expect(c.ALLOWED_USER_IDS).toEqual([1, 22, 333])
-    expect(c.WORKSPACE_DIR).toBe("/workspace")
+    expect(c.WORKSPACE_DIR).toBe(resolve("workspace"))
+    expect(loadConfig({ TELEGRAM_BOT_TOKEN: "t", DATA_DIR: "/data" }).DATA_DIR).toBe("/data")
   })
 
   test("rejects an invalid allowlist", () => {
@@ -89,18 +94,172 @@ describe("file sniffing", () => {
 })
 
 describe("Store", () => {
-  test("persists chat → session mappings", () => {
+  test("persists thread → session mappings", () => {
     const dir = mkdtempSync(join(tmpdir(), "store-"))
     const store = new Store(dir)
-    expect(store.get(1)).toBeUndefined()
-    store.set(1, "ses_a")
-    store.set(1, "ses_b")
-    expect(store.get(1)).toEqual({ chatId: 1, sessionID: "ses_b" })
+    const main = { chatId: 1, threadId: 0 }
+    const topic = { chatId: 1, threadId: 42 }
+    expect(store.get(main)).toBeUndefined()
+    store.set(main, "ses_a")
+    store.set(main, "ses_b")
+    store.set(topic, "ses_c", true)
+    expect(store.get(main)).toMatchObject({ chatId: 1, threadId: 0, sessionID: "ses_b", autoTitle: false })
+    expect(store.get(topic)).toMatchObject({ sessionID: "ses_c", autoTitle: true })
+    expect(store.bySession("ses_c")?.threadId).toBe(42)
+    store.clearAutoTitle(topic)
+    expect(store.get(topic)?.autoTitle).toBe(false)
     store.close()
     const reopened = new Store(dir)
-    expect(reopened.get(1)?.sessionID).toBe("ses_b")
-    reopened.delete(1)
-    expect(reopened.get(1)).toBeUndefined()
+    expect(reopened.get(main)?.sessionID).toBe("ses_b")
+    expect(reopened.latest(1)).toBeDefined()
+    reopened.delete(main)
+    expect(reopened.get(main)).toBeUndefined()
     reopened.close()
+  })
+
+  test("migrates the legacy chats table", () => {
+    const dir = mkdtempSync(join(tmpdir(), "store-"))
+    const db = new Database(join(dir, "bot.sqlite"), { create: true })
+    db.run("CREATE TABLE chats (chat_id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+    db.run("INSERT INTO chats VALUES (7, 'ses_old', 1)")
+    db.close()
+    const store = new Store(dir)
+    expect(store.get({ chatId: 7, threadId: 0 })?.sessionID).toBe("ses_old")
+    store.close()
+  })
+
+  test("stores settings, env vars and MCP overrides", () => {
+    const store = new Store(mkdtempSync(join(tmpdir(), "store-")))
+    store.setSetting("THREAD_MODE", "off")
+    expect(store.getSetting("THREAD_MODE")).toBe("off")
+    store.setSetting("THREAD_MODE", undefined)
+    expect(store.getSetting("THREAD_MODE")).toBeUndefined()
+    store.setEnvVar("FOO", "bar")
+    expect(store.envVars().map((v) => v.name)).toEqual(["FOO"])
+    store.setMcpServer("gone", null)
+    store.setMcpServer("fs", { type: "local", command: ["x"] })
+    expect(store.mcpServers()).toEqual([
+      { name: "fs", config: { type: "local", command: ["x"] } },
+      { name: "gone", config: null },
+    ])
+    store.close()
+  })
+})
+
+describe("threadParams", () => {
+  test("omits the thread for the main chat", () => {
+    expect(threadParams({ chatId: 1, threadId: 0 })).toEqual({})
+    expect(threadParams({ chatId: 1, threadId: 9 })).toEqual({ message_thread_id: 9 })
+  })
+})
+
+describe("runtime settings", () => {
+  test("applies and validates overrides", () => {
+    const c = loadConfig({ TELEGRAM_BOT_TOKEN: "t" })
+    expect(c.ALLOWED_USER_IDS).toEqual([])
+    applySetting(c, "ALLOWED_USER_IDS", "5,6", {})
+    expect(c.ALLOWED_USER_IDS).toEqual([5, 6])
+    applySetting(c, "THREAD_MODE", "off", {})
+    expect(c.THREAD_MODE).toBe("off")
+    applySetting(c, "THREAD_MODE", undefined, {})
+    expect(c.THREAD_MODE).toBe("auto")
+    expect(() => applySetting(c, "DEFAULT_MODEL", "bad", {})).toThrow()
+    applySetting(c, "DEFAULT_MODEL", undefined, { DEFAULT_MODEL: "a/b" })
+    expect(c.DEFAULT_MODEL).toBe("a/b")
+  })
+})
+
+describe("parseEnvText", () => {
+  test("reads dotenv lines with quotes, export and comments", () => {
+    const { entries, errors } = parseEnvText('# hi\nexport A="1 2"\nB=x # note\nC: \'y\'\n\nD=')
+    expect(entries).toEqual([
+      { name: "A", value: "1 2" },
+      { name: "B", value: "x" },
+      { name: "C", value: "y" },
+    ])
+    expect(errors).toEqual([])
+  })
+
+  test("reads JSON objects", () => {
+    expect(parseEnvText('{"A":"1","B":2,"bad key":"x","C":{}}').entries).toEqual([
+      { name: "A", value: "1" },
+      { name: "B", value: "2" },
+    ])
+  })
+
+  test("guesses names for bare keys", () => {
+    const { entries, errors } = parseEnvText("sk-ant-abc123\nsk-or-v1-xyz\nwhat is this")
+    expect(entries.map((e) => [e.name, e.guessed])).toEqual([
+      ["ANTHROPIC_API_KEY", true],
+      ["OPENROUTER_API_KEY", true],
+    ])
+    expect(errors).toHaveLength(1)
+  })
+})
+
+describe("planEnvImport", () => {
+  const integrations = [
+    { id: "anthropic", name: "Anthropic", methods: [{ type: "key" }, { type: "env", names: ["ANTHROPIC_API_KEY"] }] },
+    { id: "aws", name: "Bedrock", methods: [{ type: "env", names: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] }] },
+  ]
+
+  test("stores single-variable provider keys as credentials", () => {
+    const plan = planEnvImport([{ name: "ANTHROPIC_API_KEY", value: "sk-ant-1234567890abcdef" }], integrations)
+    expect(plan[0]).toMatchObject({ action: "credential", integration: { id: "anthropic" } })
+    expect(plan[0]!.masked).not.toContain("1234567890")
+  })
+
+  test("keeps multi-variable and unknown names as env vars", () => {
+    const plan = planEnvImport(
+      [
+        { name: "AWS_ACCESS_KEY_ID", value: "x" },
+        { name: "OTHER", value: "y" },
+      ],
+      integrations,
+    )
+    expect(plan.map((p) => [p.action, p.integration?.id])).toEqual([
+      ["env", "aws"],
+      ["env", undefined],
+    ])
+  })
+})
+
+describe("parseMcpImport", () => {
+  test("reads Claude Desktop style configs", () => {
+    const { servers, errors } = parseMcpImport(
+      JSON.stringify({
+        mcpServers: {
+          fs: { command: "npx", args: ["-y", "server-fs", "/w"], env: { A: "1" } },
+          remote: { url: "https://x.dev/mcp", headers: { Authorization: "Bearer t" } },
+        },
+      }),
+    )
+    expect(errors).toEqual([])
+    expect(servers).toEqual([
+      { name: "fs", config: { type: "local", command: ["npx", "-y", "server-fs", "/w"], environment: { A: "1" } } },
+      { name: "remote", config: { type: "remote", url: "https://x.dev/mcp", headers: { Authorization: "Bearer t" } } },
+    ])
+  })
+
+  test("reads OpenCode configs with comments and trailing commas", () => {
+    const { servers } = parseMcpImport('{ // c\n "mcp": { "servers": { "a": { "type": "local", "command": ["x"], "enabled": false, }, }, } }')
+    expect(servers).toEqual([{ name: "a", config: { type: "local", command: ["x"], disabled: true } }])
+  })
+
+  test("needs a name for a single server", () => {
+    expect(parseMcpImport('{"command":"x"}').errors).toEqual(["Give this server a name."])
+    expect(parseMcpImport('{"command":"x"}', "one").servers[0]?.name).toBe("one")
+  })
+
+  test("reports invalid servers", () => {
+    const { servers, errors } = parseMcpImport('{"mcpServers":{"a":{"type":"remote"},"b c":{"command":"x"}}}')
+    expect(servers).toEqual([])
+    expect(errors).toHaveLength(2)
+  })
+})
+
+describe("splitCommand", () => {
+  test("honours quotes", () => {
+    expect(splitCommand(`npx -y "my server" 'a b' ""`)).toEqual(["npx", "-y", "my server", "a b", ""])
   })
 })

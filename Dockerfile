@@ -27,5 +27,6 @@ ENV NODE_ENV=production \
 RUN mkdir -p /workspace /data && chown -R bun:bun /workspace /data
 USER bun
 VOLUME ["/workspace", "/data"]
+EXPOSE 8080
 
 CMD ["bun", "src/index.ts"]
