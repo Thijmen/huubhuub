@@ -23,7 +23,8 @@ const bridge = await Bridge.start(config, store)
 const transcriber = Transcriber.enabled() ? new Transcriber(config) : undefined
 if (!transcriber) console.warn("No AWS credentials found; voice transcription is disabled.")
 
-const bot = createBot(config, bridge, (b) => new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined)))
+let chats!: Chats
+const bot = createBot(config, bridge, (b) => (chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined))))
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 
 await bot.api.setMyCommands([
@@ -35,7 +36,7 @@ await bot.api.setMyCommands([
   { command: "help", description: "Show help" },
 ])
 
-const admin = startAdmin({ config, bridge, store, settings, bot, token: adminToken() })
+const admin = startAdmin({ config, bridge, store, settings, bot, chats, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
 
 function adminToken(): string {

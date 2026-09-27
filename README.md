@@ -8,7 +8,7 @@ A Telegram bot that uses an embedded [OpenCode V2](https://opencode.ai/v2/docs/)
 - **Threads**: each new conversation opens its own Telegram topic, named after the session title once OpenCode generates one. See [Threads](#threads).
 - **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/whoami`, `/help`
 - **Allowlist**: only the Telegram user IDs in `ALLOWED_USER_IDS`, or those added in the admin UI, can use the bot.
-- **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, and browse conversations. See [Admin UI](#admin-ui).
+- **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, and read and reply to conversations live. See [Admin UI](#admin-ui).
 
 ## Architecture
 
@@ -84,7 +84,7 @@ The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN
 - **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. Models appear straight away, without a restart.
 - **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `opencode.jsonc`.
 - **Settings**: default model and agent, the Telegram allowlist, and thread mode. Values set here override the environment. "Reset" goes back to the env value.
-- **Conversations**: every thread with its session title, model, token usage and cost.
+- **Conversations**: every thread, live. It streams replies, tool calls and reasoning, with per-turn tokens and cost. You can reply, stop a run, switch model or agent, or start a new topic from the portal. Portal messages are mirrored into Telegram with a 💻 tag, so the reply shows up in both places.
 
 The admin UI can install credentials and run commands through MCP, so treat the token like a root password. `docker-compose.yml` binds the port to `127.0.0.1`. Put a TLS reverse proxy in front before exposing it anywhere else.
 

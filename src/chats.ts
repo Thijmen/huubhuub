@@ -112,6 +112,39 @@ export class Chats {
       .catch((err) => console.error("topic rename failed", err))
   }
 
+  /** A prompt typed in the admin portal. Echoed into the Telegram thread so the reply there has context. */
+  async sendFromPortal(sessionID: string, text: string): Promise<void> {
+    const key = this.store.bySession(sessionID)
+    if (!key) return void (await this.bridge.prompt(sessionID, text))
+    await this.api
+      .sendMessage(key.chatId, `💻 <i>from portal</i>\n${escape(truncate(text, 3500))}`, { parse_mode: "HTML", ...threadParams(key) })
+      .catch((err) => console.error("portal echo failed", err))
+    await this.send(key, text)
+  }
+
+  /** Open a conversation from the portal: a new topic when the chat supports it, else a fresh session in place. */
+  async startFromPortal(chatId: number): Promise<{ key: ChatKey; sessionID: string }> {
+    const from = { chatId, threadId: 0 }
+    const chat = await this.api.getChat(chatId).catch(() => undefined)
+    if (chat && this.threaded(chat)) {
+      const topic = await this.createTopic(from)
+      if (topic) {
+        await this.api
+          .sendMessage(chatId, "🆕 New conversation started from the portal.", threadParams(topic.key))
+          .catch((err) => console.error("topic intro failed", err))
+        return topic
+      }
+    }
+    const current = this.views.get(viewId(from))
+    if (current?.busy) await this.bridge.interrupt(current.sessionID).catch(() => {})
+    current?.dispose()
+    this.views.delete(viewId(from))
+    const sessionID = await this.bridge.resetSession(from)
+    await this.view(from)
+    await this.api.sendMessage(chatId, "🆕 New session started from the portal.").catch(() => {})
+    return { key: from, sessionID }
+  }
+
   async send(key: ChatKey, text: string, files: Attachment[] = []): Promise<void> {
     const view = await this.view(key)
     this.store.touch(key)

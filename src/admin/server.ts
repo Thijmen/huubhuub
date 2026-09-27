@@ -1,11 +1,13 @@
 import type { Bot } from "grammy"
 import { timingSafeEqual } from "node:crypto"
+import type { Chats } from "../chats"
 import { isRuntimeSetting, PROTECTED_ENV, type Settings } from "../settings"
 import type { Config } from "../config"
 import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
 import type { Store } from "../store"
+import { conversation, eventStream } from "./chat"
 import index from "./web/index.html"
 
 interface Deps {
@@ -14,6 +16,7 @@ interface Deps {
   store: Store
   settings: Settings
   bot: Bot
+  chats: Chats
   token: string
 }
 
@@ -26,16 +29,16 @@ class HttpError extends Error {
   }
 }
 
-type Handler = (req: Bun.BunRequest, deps: Deps) => Promise<unknown> | unknown
+type Handler = (req: Bun.BunRequest, deps: Deps, server: Bun.Server<undefined>) => Promise<unknown> | unknown
 
 export function startAdmin(deps: Deps) {
   const { config } = deps
   const started = Date.now()
 
-  const api = (handler: Handler) => async (req: Bun.BunRequest) => {
+  const api = (handler: Handler) => async (req: Bun.BunRequest, server: Bun.Server<undefined>) => {
     if (!authorised(req, deps.token)) return json({ error: "Unauthorised" }, 401)
     try {
-      const result = await handler(req, deps)
+      const result = await handler(req, deps, server)
       return result instanceof Response ? result : json(result ?? { ok: true })
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500
@@ -201,7 +204,71 @@ export function startAdmin(deps: Deps) {
         }),
       },
 
-      "/api/threads": { GET: api((_, d) => threads(d)) },
+      "/api/threads": {
+        GET: api((_, d) => threads(d)),
+        POST: api(async (req, d) => {
+          const { chatId } = await read<{ chatId: number }>(req)
+          if (!Number.isSafeInteger(chatId)) throw new HttpError(400, "Pick a chat to start the conversation in.")
+          if (!d.store.latest(chatId)) throw new HttpError(404, "The bot hasn't talked in that chat yet.")
+          const started = await d.chats.startFromPortal(chatId)
+          return { sessionID: started.sessionID, ...started.key }
+        }),
+      },
+      "/api/threads/:sessionID": {
+        GET: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          const page = await conversation(d.bridge, d.store, sessionID, new URL(req.url).searchParams.get("cursor") ?? undefined)
+          return { ...page, bot: d.bot.isInited() ? d.bot.botInfo.username : null }
+        }),
+      },
+      "/api/threads/:sessionID/events": {
+        GET: api((req, d, server) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          server.timeout(req, 0)
+          return eventStream(d.bridge, sessionID, req.signal)
+        }),
+      },
+      "/api/threads/:sessionID/prompt": {
+        POST: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          const { text } = await read<{ text: string }>(req)
+          if (!text?.trim()) throw new HttpError(400, "Type a message first.")
+          await d.chats.sendFromPortal(sessionID, text.trim())
+        }),
+      },
+      "/api/threads/:sessionID/stop": {
+        POST: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          await d.bridge.interrupt(sessionID)
+        }),
+      },
+      "/api/threads/:sessionID/model": {
+        PUT: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          const { ref } = await read<{ ref: string }>(req)
+          const slash = ref?.indexOf("/") ?? -1
+          if (slash < 1) throw new HttpError(400, "Use provider/model.")
+          const model = { providerID: ref.slice(0, slash), id: ref.slice(slash + 1) }
+          if (!(await d.bridge.models()).some((m) => m.providerID === model.providerID && m.id === model.id)) {
+            throw new HttpError(400, `${ref} isn't available.`)
+          }
+          await d.bridge.switchModel(sessionID, model)
+        }),
+      },
+      "/api/threads/:sessionID/agent": {
+        PUT: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          const { agent } = await read<{ agent: string }>(req)
+          if (!(await d.bridge.agents()).some((a) => a.id === agent)) throw new HttpError(400, `Unknown agent ${agent}.`)
+          await d.bridge.switchAgent(sessionID, agent)
+        }),
+      },
     },
     fetch: () => json({ error: "Not found" }, 404),
     error: (err) => json({ error: errorMessage(err) }, 500),
@@ -338,6 +405,7 @@ async function saveMcp(d: Deps, name: string, config: McpConfig): Promise<void> 
 
 async function threads(d: Deps) {
   const rows = d.store.list(100)
+  const active = await d.bridge.host.sessions.active().catch(() => ({}) as Record<string, unknown>)
   return Promise.all(
     rows.map(async (r) => {
       const s = await d.bridge.getSession(r.sessionID).catch(() => undefined)
@@ -351,9 +419,15 @@ async function threads(d: Deps) {
         agent: s?.agent ?? null,
         cost: s?.cost ?? 0,
         tokens: s ? s.tokens.input + s.tokens.output : 0,
+        busy: r.sessionID in active,
       }
     }),
   )
+}
+
+/** Only sessions bound to a Telegram thread are exposed through the portal. */
+function knownSession(d: Deps, sessionID: string): void {
+  if (!d.store.bySession(sessionID)) throw new HttpError(404, "No conversation with that ID.")
 }
 
 function authorised(req: Request, token: string): boolean {
