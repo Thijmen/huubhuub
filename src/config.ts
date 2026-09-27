@@ -1,37 +1,79 @@
+import { resolve } from "node:path"
 import { z } from "zod"
+
+/** `/workspace` and `/data` in the container; `./workspace` and `./data` when running locally. */
+function defaultDir(name: string): string {
+  return process.env.NODE_ENV === "production" ? `/${name}` : `./${name}`
+}
+
+const userIds = z
+  .string()
+  .default("")
+  .transform((s) =>
+    s
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .map(Number),
+  )
+  .pipe(z.array(z.number().int().positive()))
 
 const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
-  ALLOWED_USER_IDS: z
-    .string()
-    .min(1)
-    .transform((s) =>
-      s
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean)
-        .map(Number),
-    )
-    .pipe(z.array(z.number().int().positive()).min(1)),
-  WORKSPACE_DIR: z.string().default("/workspace"),
-  DATA_DIR: z.string().default("/data"),
+  ALLOWED_USER_IDS: userIds,
+  WORKSPACE_DIR: z.string().default(defaultDir("workspace")).transform((p) => resolve(p)),
+  DATA_DIR: z.string().default(defaultDir("data")).transform((p) => resolve(p)),
   DEFAULT_MODEL: z.string().optional(),
   DEFAULT_AGENT: z.string().optional(),
+  THREAD_MODE: z.enum(["auto", "off"]).default("auto"),
   OPENCODE_LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("warn"),
   TRANSCRIBE_REGION: z.string().optional(),
   TRANSCRIBE_LANGUAGE: z.string().optional(),
   TRANSCRIBE_LANGUAGE_OPTIONS: z.string().default("en-US,nl-NL"),
+  ADMIN_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
+  ADMIN_HOST: z.string().default("0.0.0.0"),
+  ADMIN_TOKEN: z.string().optional(),
+  ADMIN_PUBLIC_URL: z.string().url().optional(),
 })
 
 export type Config = z.infer<typeof schema>
 
+/** Settings the admin UI can change at runtime. They are stored in SQLite and override the environment. */
+export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE"] as const
+export type RuntimeSetting = (typeof RUNTIME_SETTINGS)[number]
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
-  const parsed = schema.safeParse(env)
+  const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== ""))
+  const parsed = schema.safeParse(cleaned)
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")
     throw new Error(`Invalid configuration:\n${issues}`)
   }
   return parsed.data
+}
+
+/** Validate one runtime setting and write it into the live config. `undefined` restores the environment value. */
+export function applySetting(config: Config, key: RuntimeSetting, value: string | undefined, env = process.env): void {
+  const raw = value ?? env[key] ?? ""
+  switch (key) {
+    case "ALLOWED_USER_IDS": {
+      const parsed = userIds.safeParse(raw)
+      if (!parsed.success) throw new Error("Allowed users must be numeric Telegram user IDs separated by commas.")
+      config.ALLOWED_USER_IDS = parsed.data
+      break
+    }
+    case "THREAD_MODE":
+      if (raw && raw !== "auto" && raw !== "off") throw new Error('Thread mode must be "auto" or "off".')
+      config.THREAD_MODE = raw === "off" ? "off" : "auto"
+      break
+    case "DEFAULT_MODEL":
+      if (raw) parseModelRef(raw)
+      config.DEFAULT_MODEL = raw || undefined
+      break
+    case "DEFAULT_AGENT":
+      config.DEFAULT_AGENT = raw || undefined
+      break
+  }
 }
 
 export function parseModelRef(ref: string): { providerID: string; id: string } {

@@ -1,21 +1,22 @@
 import { Bot, InlineKeyboard, type Context } from "grammy"
 import type { Config } from "./config"
 import type { Bridge } from "./opencode"
-import { Chats, UserError } from "./chats"
+import { Chats, keyOf, UserError } from "./chats"
+import { threadParams } from "./reply"
 import { truncate } from "./format"
 
 const PAGE_SIZE = 8
 
 export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => Chats): Bot {
   const bot = new Bot(config.TELEGRAM_BOT_TOKEN)
-  const allowed = new Set(config.ALLOWED_USER_IDS)
   const chat = chats(bot)
 
   bot.use(async (ctx, next) => {
     const id = ctx.from?.id
-    if (id && allowed.has(id)) return next()
+    if (id && config.ALLOWED_USER_IDS.includes(id)) return next()
     if (ctx.message?.text === "/start" || ctx.message?.text === "/whoami") {
-      await ctx.reply(`⛔ Not authorised. Your Telegram user ID is ${id ?? "unknown"}.`)
+      const hint = config.ALLOWED_USER_IDS.length === 0 ? " Add it to the allowlist in the admin UI." : ""
+      await ctx.reply(`⛔ Not authorised. Your Telegram user ID is ${id ?? "unknown"}.${hint}`)
     }
   })
 
@@ -24,7 +25,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
       [
         "👋 I'm an OpenCode agent. Send text, images, files or voice notes.",
         "",
-        "/new – start a fresh session",
+        "/new – start a new conversation (a new thread when topics are on)",
         "/stop – interrupt the current run",
         "/model – switch model",
         "/agent – switch agent",
@@ -37,18 +38,23 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
   bot.command("whoami", (ctx) => ctx.reply(`Your Telegram user ID is ${ctx.from?.id}.`))
 
   bot.command("new", async (ctx) => {
-    const sessionID = await chat.reset(ctx.chat.id)
-    await ctx.reply(`🆕 New session <code>${sessionID}</code>`, { parse_mode: "HTML" })
+    const started = await chat.startNew(ctx)
+    const prompt = ctx.match.trim()
+    const text = started.topic
+      ? `🆕 New conversation <code>${started.sessionID}</code>. ${prompt ? "" : "Send your first message here."}`
+      : `🆕 New session <code>${started.sessionID}</code>`
+    await ctx.api.sendMessage(started.key.chatId, text.trim(), { parse_mode: "HTML", ...threadParams(started.key) })
+    if (prompt) await chat.send(started.key, prompt)
   })
 
   bot.command("stop", async (ctx) => {
-    const view = await chat.view(ctx.chat.id)
+    const view = await chat.view(keyOf(ctx))
     await bridge.interrupt(view.sessionID)
     if (!view.busy) await ctx.reply("Nothing is running.")
   })
 
   bot.command("status", async (ctx) => {
-    const view = await chat.view(ctx.chat.id)
+    const view = await chat.view(keyOf(ctx))
     const s = await bridge.getSession(view.sessionID)
     const t = s.tokens
     await ctx.reply(
@@ -58,6 +64,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
         `<b>Model</b> ${s.model ? `${s.model.providerID}/${s.model.id}` : "default"}`,
         `<b>Agent</b> ${s.agent ?? "default"}`,
         `<b>State</b> ${view.busy ? "running" : "idle"}`,
+        `<b>Thread</b> ${view.key.threadId || "main chat"}${chat.threaded(ctx.chat) ? " (topics on)" : ""}`,
         `<b>Tokens</b> ${t.input} in / ${t.output} out / ${t.cache.read} cached`,
         `<b>Cost</b> $${s.cost.toFixed(4)}`,
       ]
@@ -117,7 +124,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
     const model = { providerID: ref.slice(0, slash), id: ref.slice(slash + 1) }
     const known = (await bridge.models()).some((m) => m.providerID === model.providerID && m.id === model.id)
     if (!known) return void (await ctx.reply(`Unknown model ${ref}. Try /model to browse.`))
-    const view = await chat.view(ctx.chat!.id)
+    const view = await chat.view(keyOf(ctx))
     await bridge.switchModel(view.sessionID, model)
     await ctx.reply(`🧠 Model set to <code>${escape(ref)}</code>`, { parse_mode: "HTML" })
   }
@@ -126,7 +133,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
     const agents = await bridge.agents()
     const agent = agents.find((a) => a.id === name || a.name.toLowerCase() === name.toLowerCase())
     if (!agent) return void (await ctx.reply(`Unknown agent ${name}. Available: ${agents.map((a) => a.id).join(", ")}`))
-    const view = await chat.view(ctx.chat!.id)
+    const view = await chat.view(keyOf(ctx))
     await bridge.switchAgent(view.sessionID, agent.id)
     await ctx.reply(`🤖 Agent set to <b>${escape(agent.name)}</b>`, { parse_mode: "HTML" })
   }

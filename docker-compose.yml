@@ -4,6 +4,9 @@ services:
     image: opencode-telegram-bot
     restart: unless-stopped
     env_file: .env
+    ports:
+      # Admin UI. Bind to localhost and put a TLS proxy in front if you expose it.
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./workspace:/workspace
       - bot-data:/data
