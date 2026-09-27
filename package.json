@@ -1,0 +1,25 @@
+{
+  "name": "opencode-telegram-bot",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "@aws-sdk/client-transcribe-streaming": "^3.1141.0",
+    "@grammyjs/auto-retry": "^2.0.2",
+    "@opencode/sdk": "^2.0.18",
+    "grammy": "^1.46.0",
+    "zod": "^4.6.5"
+  }
+}

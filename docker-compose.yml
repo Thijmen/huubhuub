@@ -1,0 +1,12 @@
+services:
+  bot:
+    build: .
+    image: opencode-telegram-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./workspace:/workspace
+      - bot-data:/data
+
+volumes:
+  bot-data:
