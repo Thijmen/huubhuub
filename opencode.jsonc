@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // The container is the sandbox: the agent may do anything inside it without asking.
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "allow" },
+    { "action": "external_directory", "resource": "*", "effect": "allow" },
+    { "action": "read", "resource": "*.env", "effect": "allow" },
+    { "action": "read", "resource": "*.env.*", "effect": "allow" },
+    // There is no interactive client to answer questions; the model should just proceed.
+    { "action": "question", "resource": "*", "effect": "deny" }
+  ],
+  "media": {
+    "image": {
+      "auto_resize": true,
+      "max_width": 2000,
+      "max_height": 2000
+    }
+  }
+}
