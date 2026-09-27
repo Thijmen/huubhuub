@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { api, auth, setUnauthorisedHandler } from "./api"
 import { McpPage } from "./pages/mcp"
@@ -21,13 +21,25 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"]
 
 function currentTab(): Tab {
-  const id = location.hash.slice(1)
+  const id = location.hash.slice(1).split("/")[0]
   return (TABS.find((t) => t.id === id)?.id ?? "overview") as Tab
+}
+
+function currentThread(): string | undefined {
+  const [tab, id] = location.hash.slice(1).split("/")
+  return tab === "threads" && id ? decodeURIComponent(id) : undefined
 }
 
 function App() {
   const [authed, setAuthed] = useState<boolean | undefined>(undefined)
   const [tab, setTab] = useState<Tab>(currentTab)
+  const [thread, setThread] = useState(currentThread)
+  const openThread = useCallback((id?: string) => {
+    const hash = id ? `threads/${encodeURIComponent(id)}` : "threads"
+    if (id && location.hash.slice(1).split("/").length === 1) history.replaceState(null, "", `#${hash}`)
+    else location.hash = hash
+    setThread(id)
+  }, [])
 
   useEffect(() => {
     setUnauthorisedHandler(() => {
@@ -42,7 +54,10 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const onHash = () => setTab(currentTab())
+    const onHash = () => {
+      setTab(currentTab())
+      setThread(currentThread())
+    }
     window.addEventListener("hashchange", onHash)
     return () => window.removeEventListener("hashchange", onHash)
   }, [])
@@ -85,13 +100,13 @@ function App() {
           </Button>
         </div>
       </aside>
-      <main className="main">
-        <div className="page" key={tab}>
+      <main className={`main ${tab === "threads" ? "main-full" : ""}`}>
+        <div className={`page ${tab === "threads" ? "page-full" : ""}`} key={tab}>
           {tab === "overview" && <OverviewPage go={go} />}
           {tab === "providers" && <ProvidersPage />}
           {tab === "env" && <EnvPage />}
           {tab === "mcp" && <McpPage />}
-          {tab === "threads" && <ThreadsPage />}
+          {tab === "threads" && <ThreadsPage selected={thread} open={openThread} />}
           {tab === "settings" && <SettingsPage />}
         </div>
       </main>

@@ -37,6 +37,32 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 
 export const enc = encodeURIComponent
 
+/** Read a server-sent event stream with the auth header, which EventSource can't send. */
+export async function stream(path: string, onEvent: (event: string, data: unknown) => void, signal: AbortSignal): Promise<void> {
+  const res = await fetch(path, { headers: { authorization: `Bearer ${auth.get()}` }, signal })
+  if (res.status === 401) onUnauthorised()
+  if (!res.ok || !res.body) throw new ApiError(res.status, res.statusText)
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ""
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) return
+    buffer += value
+    let cut: number
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const frame = buffer.slice(0, cut)
+      buffer = buffer.slice(cut + 2)
+      let event = "message"
+      const data: string[] = []
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event: ")) event = line.slice(7)
+        else if (line.startsWith("data: ")) data.push(line.slice(6))
+      }
+      if (data.length) onEvent(event, JSON.parse(data.join("\n")))
+    }
+  }
+}
+
 export type Method =
   | { type: "key"; label?: string; form?: FormField[] }
   | { type: "env"; names: string[] }
@@ -145,6 +171,64 @@ export interface ThreadRow {
   agent: string | null
   cost: number
   tokens: number
+  busy: boolean
+}
+
+export type Tokens = { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
+type Base = { id: string; time: { created: number; completed?: number }; metadata?: Record<string, unknown> }
+type Err = { type: string; message: string }
+
+export type ToolState =
+  | { status: "streaming"; input: string }
+  | { status: "running"; input: Record<string, unknown> }
+  | { status: "completed"; input: Record<string, unknown>; content: ToolContent[] }
+  | { status: "error"; input: Record<string, unknown>; error: Err; content?: ToolContent[] }
+
+export type ToolContent = { type: "text"; text: string } | { type: "file"; uri: string; mime: string; name?: string | null }
+
+export type AssistantPart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string; time?: { created: number; completed?: number } }
+  | { type: "tool"; id: string; name: string; state: ToolState; time: { created: number; ran?: number; completed?: number } }
+
+export type ChatMessage =
+  | (Base & { type: "user"; text: string; files?: { name: string | null; mime: string; preview: string | null }[] })
+  | (Base & {
+      type: "assistant"
+      agent: string
+      model: { providerID: string; id: string }
+      content: AssistantPart[]
+      finish?: string
+      cost?: number
+      tokens?: Tokens
+      error?: Err
+      retry?: { attempt: number; at: number; error: Err }
+    })
+  | (Base & { type: "agent-switched"; agent: string; previous?: string })
+  | (Base & { type: "model-switched"; model: { providerID: string; id: string }; previous?: { providerID: string; id: string } })
+  | (Base & { type: "location-switched" })
+  | (Base & { type: "synthetic" | "system"; text: string; description?: string })
+  | (Base & { type: "skill"; name: string; text: string })
+  | (Base & { type: "shell"; command: string; status: string; exit?: number | string; output?: { output: string } })
+  | (Base & { type: "compaction"; status: "running" | "completed" | "failed"; reason: string; summary?: string })
+  | (Base & { type: "idle"; outcome: "succeeded" | "failed" | "interrupted" })
+
+export interface Conversation {
+  session: {
+    id: string
+    title: string | null
+    model: string | null
+    agent: string | null
+    cost: number
+    tokens: Tokens
+    created: number
+    updated: number
+  }
+  key: { chatId: number; threadId: number } | null
+  bot: string | null
+  busy: boolean
+  messages: ChatMessage[]
+  older: string | null
 }
 
 export interface OAuthAttempt {
