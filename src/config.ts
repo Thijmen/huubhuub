@@ -29,6 +29,7 @@ const schema = z.object({
   DEFAULT_MODEL: z.string().optional(),
   DEFAULT_AGENT: z.string().optional(),
   THREAD_MODE: z.enum(["auto", "off"]).default("auto"),
+  TELEGRAM_STREAMING: z.enum(["draft", "edit"]).default("draft"),
   OPENCODE_LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("warn"),
   TRANSCRIBE_REGION: z.string().optional(),
   TRANSCRIBE_LANGUAGE: z.string().optional(),
@@ -47,7 +48,7 @@ const schema = z.object({
 export type Config = z.infer<typeof schema>
 
 /** Settings the admin UI can change at runtime. They are stored in SQLite and override the environment. */
-export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE"] as const
+export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "TELEGRAM_STREAMING", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE"] as const
 export type RuntimeSetting = (typeof RUNTIME_SETTINGS)[number]
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -73,6 +74,10 @@ export function applySetting(config: Config, key: RuntimeSetting, value: string 
     case "THREAD_MODE":
       if (raw && raw !== "auto" && raw !== "off") throw new Error('Thread mode must be "auto" or "off".')
       config.THREAD_MODE = raw === "off" ? "off" : "auto"
+      break
+    case "TELEGRAM_STREAMING":
+      if (raw && raw !== "draft" && raw !== "edit") throw new Error('Streaming must be "draft" or "edit".')
+      config.TELEGRAM_STREAMING = raw === "edit" ? "edit" : "draft"
       break
     case "DEFAULT_MODEL":
       if (raw) parseModelRef(raw)

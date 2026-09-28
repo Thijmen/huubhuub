@@ -34,7 +34,7 @@ export class Chats {
     const current = this.views.get(id)
     if (current?.sessionID === sessionID) return current
     current?.dispose()
-    const view = new ChatView(this.api, this.bridge, key, sessionID, this.questions, (title) => void this.renameTopic(key, title))
+    const view = new ChatView(this.api, this.bridge, key, sessionID, this.questions, () => this.config.TELEGRAM_STREAMING, (title) => void this.renameTopic(key, title))
     this.views.set(id, view)
     return view
   }

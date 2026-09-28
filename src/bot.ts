@@ -13,7 +13,8 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
   const chat = chats(bot)
 
   bot.use(async (ctx, next) => {
-    const id = ctx.from?.id
+    // A draft's stop button carries no sender; drafts only exist in private chats, whose ID is the user's.
+    const id = ctx.from?.id ?? ctx.update.stopped_message_generation?.chat.id
     if (id && config.ALLOWED_USER_IDS.includes(id)) return next()
     if (ctx.message?.text === "/start" || ctx.message?.text === "/whoami") {
       const hint = config.ALLOWED_USER_IDS.length === 0 ? " Add it to the allowlist in the admin UI." : ""
@@ -148,6 +149,13 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
     await bridge.switchAgent(view.sessionID, agent.id)
     await ctx.reply(`🤖 Agent set to <b>${escape(agent.name)}</b>`, { parse_mode: "HTML" })
   }
+
+  // The stop button on a streaming draft.
+  bot.on("stopped_message_generation", async (ctx) => {
+    const stopped = ctx.update.stopped_message_generation
+    const view = await chat.view({ chatId: stopped.chat.id, threadId: stopped.message_thread_id ?? 0 })
+    if (view.busy) await view.stop()
+  })
 
   extend?.(bot, chat)
 
