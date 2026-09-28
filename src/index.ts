@@ -97,7 +97,7 @@ async function poll(): Promise<void> {
     try {
       await bot.start({
         drop_pending_updates: false,
-        allowed_updates: ["message", "callback_query"],
+        allowed_updates: ["message", "callback_query", "stopped_message_generation"],
         onStart: (me) => {
           const users = config.ALLOWED_USER_IDS.length ? config.ALLOWED_USER_IDS.join(", ") : "none (add some in the admin UI)"
           const threads = config.THREAD_MODE === "off" ? "off" : me.has_topics_enabled ? "on" : "groups only (enable Threaded Mode in @BotFather for private chats)"

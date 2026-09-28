@@ -1,6 +1,6 @@
 # OpenCode Telegram bot
 
-A Telegram bot that uses an embedded [OpenCode V2](https://opencode.ai/v2/docs/) host as its AI backend. Each conversation gets its own Telegram thread and its own persistent OpenCode session. Replies stream in with live message edits and short status lines for tool calls. A web admin UI manages providers, API keys, MCP servers and settings.
+A Telegram bot that uses an embedded [OpenCode V2](https://opencode.ai/v2/docs/) host as its AI backend. Each conversation gets its own Telegram thread and its own persistent OpenCode session. Replies stream in live (as a Telegram draft with a stop button in private chats, as message edits in groups), with short status lines for tool calls. A web admin UI manages providers, API keys, MCP servers and settings.
 
 - **Text**: sent to OpenCode as a prompt. Messages sent mid-run are queued.
 - **Images and files**: PNG, JPEG, GIF, WebP, and UTF-8 text files are forwarded as attachments. Images need a model with image input.

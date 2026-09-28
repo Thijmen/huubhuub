@@ -149,7 +149,7 @@ export interface EnvPlan {
 }
 
 export interface SettingInfo {
-  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE"
+  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE"
   value: string
   source: "admin" | "env" | "default"
   envValue: string

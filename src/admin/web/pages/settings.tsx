@@ -18,6 +18,7 @@ export function SettingsPage() {
           <AgentSetting setting={get("DEFAULT_AGENT")!} agents={data.agents} onSaved={reload} />
           <UsersSetting setting={get("ALLOWED_USER_IDS")!} onSaved={reload} />
           <ThreadSetting setting={get("THREAD_MODE")!} onSaved={reload} />
+          <StreamingSetting setting={get("TELEGRAM_STREAMING")!} onSaved={reload} />
           <QuestionTimeoutSetting setting={get("QUESTION_TIMEOUT_MINUTES")!} onSaved={reload} />
           <TimeZoneSetting setting={get("SCHEDULE_TIMEZONE")!} onSaved={reload} />
         </div>
@@ -189,6 +190,33 @@ function ThreadSetting({ setting, onSaved }: { setting: SettingInfo; onSaved: ()
         options={[
           { value: "auto", label: "New topic per conversation" },
           { value: "off", label: "Single chat" },
+        ]}
+      />
+    </SettingCard>
+  )
+}
+
+function StreamingSetting({ setting, onSaved }: { setting: SettingInfo; onSaved: () => Promise<void> }) {
+  const { busy, save } = useSave("TELEGRAM_STREAMING", onSaved)
+  const [value, setValue] = useState(setting.value || "draft")
+  useEffect(() => setValue(setting.value || "draft"), [setting.value])
+  return (
+    <SettingCard
+      title="Streaming"
+      description="Live drafts stream the answer as it is written, with a stop button, and send the final message when done. Only private chats support drafts; groups always update one message in place."
+      setting={setting}
+      busy={busy}
+      onReset={() => save(null)}
+    >
+      <Segmented
+        value={value as "draft" | "edit"}
+        onChange={(v) => {
+          setValue(v)
+          void save(v)
+        }}
+        options={[
+          { value: "draft", label: "Live draft" },
+          { value: "edit", label: "Edit message" },
         ]}
       />
     </SettingCard>
