@@ -8,6 +8,7 @@ const base: Conversation = {
   key: null,
   bot: null,
   busy: false,
+  question: null,
   messages: [],
   older: null,
 }

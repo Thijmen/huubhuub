@@ -1,4 +1,5 @@
 import type { Bridge, Host, SessionEvent } from "../opencode"
+import type { Questions } from "../question"
 import type { Store } from "../store"
 
 type Message = Awaited<ReturnType<Host["message"]["list"]>>["data"][number]
@@ -11,7 +12,7 @@ const HEARTBEAT_MS = 15_000
 const SKIP_EVENTS = new Set(["session.tool.input.delta"])
 
 /** One page of a conversation, newest last, with enough session info to render the header. */
-export async function conversation(bridge: Bridge, store: Store, sessionID: string, cursor?: string) {
+export async function conversation(bridge: Bridge, store: Store, questions: Questions, sessionID: string, cursor?: string) {
   const [session, page, active] = await Promise.all([
     bridge.getSession(sessionID),
     bridge.host.message.list({ sessionID, order: "desc", limit: PAGE, ...(cursor ? { cursor } : {}) }),
@@ -31,13 +32,14 @@ export async function conversation(bridge: Bridge, store: Store, sessionID: stri
     },
     key: key ? { chatId: key.chatId, threadId: key.threadId } : null,
     busy: sessionID in active,
+    question: questions.pending(sessionID)?.snapshot() ?? null,
     messages: page.data.map(slim).reverse(),
     older: page.data.length === PAGE ? (page.cursor.next ?? null) : null,
   }
 }
 
 /** Server-sent events for one session. Ends when the client disconnects. */
-export function eventStream(bridge: Bridge, sessionID: string, signal: AbortSignal): Response {
+export function eventStream(bridge: Bridge, questions: Questions, sessionID: string, signal: AbortSignal): Response {
   const encoder = new TextEncoder()
   let cleanup = () => {}
   const stream = new ReadableStream<Uint8Array>({
@@ -52,9 +54,13 @@ export function eventStream(bridge: Bridge, sessionID: string, signal: AbortSign
       const unsubscribe = bridge.subscribe(sessionID, (e: SessionEvent) => {
         if (!SKIP_EVENTS.has(e.type)) write(`event: session\ndata: ${JSON.stringify({ type: e.type, data: clip(e.data) })}\n\n`)
       })
+      const offQuestions = questions.subscribe(sessionID, (flow) => {
+        write(`event: question\ndata: ${JSON.stringify(flow.snapshot())}\n\n`)
+      })
       const beat = setInterval(() => write(": ping\n\n"), HEARTBEAT_MS)
       cleanup = () => {
         unsubscribe()
+        offQuestions()
         clearInterval(beat)
         cleanup = () => {}
         try {

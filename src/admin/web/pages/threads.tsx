@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { api, enc, stream, type AssistantPart, type ChatMessage, type Conversation, type SettingsResponse, type ThreadRow, type ToolState } from "../api"
+import { api, enc, stream, type AssistantPart, type ChatMessage, type Conversation, type PendingQuestion, type QuestionAction, type SettingsResponse, type ThreadRow, type ToolState } from "../api"
 import { CodeBlock, Markdown } from "../markdown"
 import { Badge, Button, Empty, ErrorBanner, Modal, relTime, Skeleton, useAction, useApi, useToast } from "../ui"
 
@@ -188,6 +188,11 @@ function ChatPane({ sessionID, onBack, onActivity }: { sessionID: string; onBack
                 scheduleRefresh()
                 return
               }
+              if (event === "question") {
+                const q = data as PendingQuestion
+                setConv((c) => (c ? { ...c, question: q.status === "pending" ? q : null } : c))
+                return
+              }
               const e = data as Live
               if (REFETCH_EVENTS.has(e.type)) scheduleRefresh()
               if (e.type.startsWith("session.execution.") && e.type !== "session.execution.started") onActivity()
@@ -278,10 +283,10 @@ function ChatPane({ sessionID, onBack, onActivity }: { sessionID: string; onBack
           {locals.map((l) => (
             <UserBubble key={l.id} text={l.text} time={l.time} pending />
           ))}
-          {conv.busy && !lastIsStreaming(conv.messages) && <Thinking />}
+          {conv.question ? <QuestionCard question={conv.question} path={path} /> : conv.busy && !lastIsStreaming(conv.messages) && <Thinking />}
         </div>
       </div>
-      <Composer busy={conv.busy} onSend={send} onStop={() => api("POST", `${path}/stop`).then(() => toast("info", "Stopping…"), (e) => toast("error", e.message))} />
+      <Composer busy={conv.busy} asking={Boolean(conv.question)} onSend={send} onStop={() => api("POST", `${path}/stop`).then(() => toast("info", "Stopping…"), (e) => toast("error", e.message))} />
     </>
   )
 }
@@ -398,7 +403,68 @@ function SessionPickers({ conv, onChanged }: { conv: Conversation; onChanged: ()
   )
 }
 
-function Composer({ busy, onSend, onStop }: { busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void }) {
+function QuestionCard({ question: q, path }: { question: PendingQuestion; path: string }) {
+  const toast = useToast()
+  const [sending, setSending] = useState(false)
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 15_000)
+    return () => clearInterval(t)
+  }, [])
+  const field = q.fields[q.index]
+  if (!field) return null
+  const act = async (action: QuestionAction) => {
+    setSending(true)
+    try {
+      await api("POST", `${path}/question`, { formID: q.formID, action })
+    } catch (err) {
+      toast("error", (err as Error).message)
+    } finally {
+      setSending(false)
+    }
+  }
+  const left = Math.max(0, Math.ceil((q.expiresAt - Date.now()) / 60_000))
+  return (
+    <div className="question-card">
+      <div className="question-head">
+        <span>❓</span>
+        <strong>{field.title}</strong>
+        {q.total > 1 && <span className="muted small">({q.index + 1}/{q.total})</span>}
+        <span className="muted small question-timer">{left} min left</span>
+      </div>
+      {field.question && <p className="question-text">{field.question}</p>}
+      <div className="question-options">
+        {field.options.map((o, i) => (
+          <button
+            key={o.label}
+            className={`question-option ${field.multiple && q.selected.includes(i) ? "active" : ""}`}
+            disabled={sending}
+            onClick={() => act(field.multiple ? { type: "toggle", option: i } : { type: "pick", option: i })}
+          >
+            <span>
+              {field.multiple ? (q.selected.includes(i) ? "☑ " : "☐ ") : ""}
+              {o.label}
+            </span>
+            {o.description && <span className="muted small">{o.description}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="row-end">
+        <Button size="sm" variant="ghost" disabled={sending} onClick={() => act({ type: "skip" })}>
+          ✖ Skip
+        </Button>
+        {field.multiple && (
+          <Button size="sm" variant="primary" busy={sending} onClick={() => act({ type: "submit" })}>
+            ✅ Submit
+          </Button>
+        )}
+      </div>
+      <p className="muted small">Or type your own answer below. Telegram shows the same question; whichever answers first wins.</p>
+    </div>
+  )
+}
+
+function Composer({ busy, asking, onSend, onStop }: { busy: boolean; asking: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void }) {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const area = useRef<HTMLTextAreaElement>(null)
@@ -426,7 +492,7 @@ function Composer({ busy, onSend, onStop }: { busy: boolean; onSend: (text: stri
         <textarea
           ref={area}
           rows={1}
-          placeholder={busy ? "Queue a follow-up…" : "Message the agent…  (Enter to send, Shift+Enter for newline)"}
+          placeholder={asking ? "Type your answer…" : busy ? "Queue a follow-up…" : "Message the agent…  (Enter to send, Shift+Enter for newline)"}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -443,7 +509,7 @@ function Composer({ busy, onSend, onStop }: { busy: boolean; onSend: (text: stri
             </Button>
           )}
           <Button size="sm" variant="primary" busy={sending} disabled={!text.trim()} onClick={submit}>
-            {busy ? "Queue" : "Send"} ↵
+            {asking ? "Answer" : busy ? "Queue" : "Send"} ↵
           </Button>
         </div>
       </div>

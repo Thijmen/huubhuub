@@ -2780,3 +2780,62 @@ pre.plain {
     width: min(360px, 90vw);
   }
 }
+
+/* Agent questions */
+
+.question-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+  padding: 14px 16px;
+  border: 1px solid rgba(122, 162, 255, 0.35);
+  border-radius: var(--radius);
+  background: rgba(122, 162, 255, 0.06);
+}
+
+.question-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.question-timer {
+  margin-left: auto;
+}
+
+.question-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.question-option:hover:not(:disabled),
+.question-option.active {
+  border-color: var(--accent-2);
+}
+
+.question-option:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

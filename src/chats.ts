@@ -3,6 +3,7 @@ import type { Chat, UserFromGetMe } from "grammy/types"
 import type { Config } from "./config"
 import { truncate } from "./format"
 import type { Attachment, Bridge } from "./opencode"
+import type { Questions } from "./question"
 import { threadParams } from "./reply"
 import { ChatView } from "./stream"
 import type { ChatKey, Store } from "./store"
@@ -24,6 +25,7 @@ export class Chats {
     private readonly config: Config,
     private readonly transcriber: Transcriber | undefined,
     private readonly me: () => UserFromGetMe | undefined,
+    readonly questions: Questions,
   ) {}
 
   async view(key: ChatKey): Promise<ChatView> {
@@ -32,7 +34,7 @@ export class Chats {
     const current = this.views.get(id)
     if (current?.sessionID === sessionID) return current
     current?.dispose()
-    const view = new ChatView(this.api, this.bridge, key, sessionID, (title) => void this.renameTopic(key, title))
+    const view = new ChatView(this.api, this.bridge, key, sessionID, this.questions, (title) => void this.renameTopic(key, title))
     this.views.set(id, view)
     return view
   }
@@ -114,6 +116,11 @@ export class Chats {
 
   /** A prompt typed in the admin portal. Echoed into the Telegram thread so the reply there has context. */
   async sendFromPortal(sessionID: string, text: string): Promise<void> {
+    const flow = this.questions.pending(sessionID)
+    if (flow) {
+      await this.questions.act(sessionID, flow.formID, { type: "text", text })
+      return
+    }
     const key = this.store.bySession(sessionID)
     if (!key) return void (await this.bridge.prompt(sessionID, text))
     await this.api
@@ -151,9 +158,22 @@ export class Chats {
     await this.bridge.prompt(view.sessionID, text, files)
   }
 
+  /** While the agent waits on a question in this thread, a typed message answers it. */
+  private pendingIn(key: ChatKey) {
+    const sessionID = this.store.get(key)?.sessionID
+    return sessionID ? this.questions.pending(sessionID) : undefined
+  }
+
+  private async answerPending(key: ChatKey, text: string): Promise<boolean> {
+    const flow = this.pendingIn(key)
+    if (!flow || !text.trim()) return false
+    return this.questions.act(flow.sessionID, flow.formID, { type: "text", text })
+  }
+
   async handleText(ctx: Context): Promise<void> {
     const text = ctx.message?.text
     if (!ctx.chat || !text) return
+    if (await this.answerPending(keyOf(ctx), text)) return
     await this.send(await this.route(ctx, text), text)
   }
 
@@ -202,6 +222,11 @@ export class Chats {
     const transcript = await this.transcriber.transcribeOgg(bytes)
     if (!transcript) {
       await ctx.reply("🎤 I couldn't make out any speech in that message.")
+      return
+    }
+    if (this.pendingIn(keyOf(ctx))) {
+      await ctx.reply(`🎤 <i>${escape(transcript)}</i>`, { parse_mode: "HTML", reply_parameters: { message_id: ctx.message!.message_id } })
+      await this.answerPending(keyOf(ctx), transcript)
       return
     }
     const key = await this.route(ctx, `🎤 ${transcript}`)

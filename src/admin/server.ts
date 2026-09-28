@@ -6,6 +6,7 @@ import type { Config } from "../config"
 import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
+import type { QuestionAction } from "../question"
 import type { Store } from "../store"
 import { conversation, eventStream } from "./chat"
 import index from "./web/index.html"
@@ -218,7 +219,7 @@ export function startAdmin(deps: Deps) {
         GET: api(async (req, d) => {
           const sessionID = param(req, "sessionID")
           knownSession(d, sessionID)
-          const page = await conversation(d.bridge, d.store, sessionID, new URL(req.url).searchParams.get("cursor") ?? undefined)
+          const page = await conversation(d.bridge, d.store, d.chats.questions, sessionID, new URL(req.url).searchParams.get("cursor") ?? undefined)
           return { ...page, bot: d.bot.isInited() ? d.bot.botInfo.username : null }
         }),
       },
@@ -227,7 +228,7 @@ export function startAdmin(deps: Deps) {
           const sessionID = param(req, "sessionID")
           knownSession(d, sessionID)
           server.timeout(req, 0)
-          return eventStream(d.bridge, sessionID, req.signal)
+          return eventStream(d.bridge, d.chats.questions, sessionID, req.signal)
         }),
       },
       "/api/threads/:sessionID/prompt": {
@@ -237,6 +238,16 @@ export function startAdmin(deps: Deps) {
           const { text } = await read<{ text: string }>(req)
           if (!text?.trim()) throw new HttpError(400, "Type a message first.")
           await d.chats.sendFromPortal(sessionID, text.trim())
+        }),
+      },
+      "/api/threads/:sessionID/question": {
+        POST: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          const body = await read<{ formID: string; action: QuestionAction }>(req)
+          const ok = await d.chats.questions.act(sessionID, body.formID, body.action)
+          if (!ok) throw new HttpError(409, "This question has already been answered.")
+          return d.chats.questions.pending(sessionID)?.snapshot() ?? null
         }),
       },
       "/api/threads/:sessionID/stop": {

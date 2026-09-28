@@ -76,6 +76,15 @@ With `THREAD_MODE=auto` (the default), every conversation lives in its own Teleg
 - A new thread inherits the model and agent of the chat's most recent conversation.
 - If topics aren't available, or `THREAD_MODE=off`, the bot falls back to one session per chat, and `/new` resets it.
 
+## Questions
+
+When the agent uses its `question` tool, the bot posts the question with a button per option. Several questions are asked one at a time in the same message, with a "(1/3)" counter.
+
+- Tap an option, or for multi-select questions tick options (☐/☑) and press ✅ Submit.
+- Or just type (or say) your own answer: while a question is open, your next message in that thread is the answer.
+- ✖ Skip dismisses the whole set. If you don't answer within `QUESTION_TIMEOUT_MINUTES` (default 10, also in the admin UI), the question times out. Either way the agent is told and carries on.
+- The same question shows in the admin UI's conversation view. Whichever side answers first wins, and the Telegram message collapses into a summary.
+
 ## Admin UI
 
 The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN_TOKEN`. If you don't set one, the bot generates a token, stores it in `/data`, and prints it at startup.
@@ -83,7 +92,7 @@ The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN
 - **Providers**: search all integrations OpenCode knows about. Paste an API key, run the OAuth/device-code sign-in, switch between or remove stored credentials, or set the provider's env var.
 - **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. Models appear straight away, without a restart.
 - **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `bot.opencode.jsonc`.
-- **Settings**: default model and agent, the Telegram allowlist, and thread mode. Values set here override the environment. "Reset" goes back to the env value.
+- **Settings**: default model and agent, the Telegram allowlist, thread mode and the question timeout. Values set here override the environment. "Reset" goes back to the env value.
 - **Conversations**: every thread, live. It streams replies, tool calls and reasoning, with per-turn tokens and cost. You can reply, stop a run, switch model or agent, or start a new topic from the portal. Portal messages are mirrored into Telegram with a 💻 tag, so the reply shows up in both places.
 
 The admin UI can install credentials and run commands through MCP, so treat the token like a root password. `docker-compose.yml` binds the port to `127.0.0.1`. Put a TLS reverse proxy in front before exposing it anywhere else.
