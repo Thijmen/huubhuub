@@ -149,7 +149,7 @@ export interface EnvPlan {
 }
 
 export interface SettingInfo {
-  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE"
+  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "QUESTION_TIMEOUT_MINUTES"
   value: string
   source: "admin" | "env" | "default"
   envValue: string
@@ -227,9 +227,28 @@ export interface Conversation {
   key: { chatId: number; threadId: number } | null
   bot: string | null
   busy: boolean
+  question: PendingQuestion | null
   messages: ChatMessage[]
   older: string | null
 }
+
+export interface PendingQuestion {
+  formID: string
+  status: "pending" | "answered" | "skipped" | "timeout" | "cancelled"
+  index: number
+  total: number
+  fields: { key: string; title: string; question: string; multiple: boolean; options: { label: string; description?: string }[] }[]
+  selected: number[]
+  answers: (string | string[] | null)[]
+  expiresAt: number
+}
+
+export type QuestionAction =
+  | { type: "pick"; option: number }
+  | { type: "toggle"; option: number }
+  | { type: "submit" }
+  | { type: "skip" }
+  | { type: "text"; text: string }
 
 export interface OAuthAttempt {
   attemptID: string

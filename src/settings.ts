@@ -51,7 +51,7 @@ export class Settings {
       const value = this.config[key]
       return {
         key,
-        value: Array.isArray(value) ? value.join(",") : (value ?? ""),
+        value: Array.isArray(value) ? value.join(",") : String(value ?? ""),
         source: stored !== undefined ? ("admin" as const) : process.env[key] ? ("env" as const) : ("default" as const),
         envValue: process.env[key] ?? "",
       }

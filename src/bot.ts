@@ -4,6 +4,7 @@ import type { Bridge } from "./opencode"
 import { Chats, keyOf, UserError } from "./chats"
 import { threadParams } from "./reply"
 import { truncate } from "./format"
+import { parseAction } from "./question"
 
 const PAGE_SIZE = 8
 
@@ -112,6 +113,14 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
     if (!model) return ctx.answerCallbackQuery({ text: "Model no longer available" })
     await applyModel(ctx, `${model.providerID}/${model.id}`)
     await ctx.answerCallbackQuery({ text: model.name })
+  })
+
+  bot.callbackQuery(/^q:([a-z0-9]+):(.+)$/, async (ctx) => {
+    const [, short, raw] = ctx.match
+    const flow = chat.questions.byShortID(short!)
+    const action = parseAction(raw!)
+    const ok = flow && action && !flow.done ? await chat.questions.act(flow.sessionID, flow.formID, action) : false
+    await ctx.answerCallbackQuery(ok ? undefined : { text: "This question is closed." })
   })
 
   bot.callbackQuery(/^a:(.+)$/, async (ctx) => {

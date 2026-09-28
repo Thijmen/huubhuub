@@ -5,7 +5,9 @@ import { parseModelRef, type Config } from "./config"
 import type { ChatKey, Store } from "./store"
 
 export type Host = Awaited<ReturnType<typeof OpenCode.create>>
-export type SessionEvent = Extract<OpenCodeEvent, { data: { sessionID: string } }>
+export type SessionEvent =
+  | Extract<OpenCodeEvent, { data: { sessionID: string } }>
+  | Extract<OpenCodeEvent, { type: "form.created" }>
 export type McpConfig = Parameters<Host["mcp"]["add"]>[0]["config"]
 type Listener = (event: SessionEvent) => void
 type ModelRef = { providerID: string; id: string }
@@ -19,6 +21,7 @@ export interface Attachment {
 
 export class Bridge {
   private listeners = new Map<string, Set<Listener>>()
+  private global = new Set<Listener>()
   private abort = new AbortController()
   private constructor(
     readonly host: Host,
@@ -86,9 +89,9 @@ export class Bridge {
     while (!this.abort.signal.aborted) {
       try {
         for await (const event of this.host.events.subscribe({ signal: this.abort.signal })) {
-          const sessionID = (event as { data?: { sessionID?: unknown } }).data?.sessionID
-          if (typeof sessionID !== "string") continue
-          for (const fn of this.listeners.get(sessionID) ?? []) {
+          const sessionID = sessionOf(event)
+          if (!sessionID) continue
+          for (const fn of [...this.global, ...(this.listeners.get(sessionID) ?? [])]) {
             try {
               fn(event as SessionEvent)
             } catch (err) {
@@ -102,6 +105,12 @@ export class Bridge {
       }
       await Bun.sleep(1000)
     }
+  }
+
+  /** Every session event, before per-session listeners. */
+  subscribeAll(fn: Listener): () => void {
+    this.global.add(fn)
+    return () => this.global.delete(fn)
   }
 
   subscribe(sessionID: string, fn: Listener): () => void {
@@ -167,6 +176,10 @@ export class Bridge {
     return this.host.sessions.prompt({ sessionID, text, files, delivery: "queue" })
   }
 
+  replyForm(sessionID: string, formID: string, answer: Record<string, string | string[]>) {
+    return this.host.sessions.form.reply({ sessionID, formID, answer })
+  }
+
   interrupt(sessionID: string) {
     return this.host.sessions.interrupt({ sessionID })
   }
@@ -197,6 +210,13 @@ export class Bridge {
     this.abort.abort()
     await this.host.close()
   }
+}
+
+/** Most events carry `data.sessionID`; `form.created` nests it in the form. */
+function sessionOf(event: OpenCodeEvent): string | undefined {
+  const data = (event as { data?: { sessionID?: unknown; form?: { sessionID?: unknown } } }).data
+  const id = data?.sessionID ?? data?.form?.sessionID
+  return typeof id === "string" ? id : undefined
 }
 
 export function configFile(): string {

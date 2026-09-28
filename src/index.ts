@@ -6,6 +6,7 @@ import { createBot } from "./bot"
 import { Chats } from "./chats"
 import { loadConfig } from "./config"
 import { Bridge } from "./opencode"
+import { Questions, trackForms } from "./question"
 import { Settings } from "./settings"
 import { Store } from "./store"
 import { Transcriber } from "./transcribe"
@@ -23,8 +24,18 @@ const bridge = await Bridge.start(config, store)
 const transcriber = Transcriber.enabled() ? new Transcriber(config) : undefined
 if (!transcriber) console.warn("No AWS credentials found; voice transcription is disabled.")
 
+const questions = new Questions(
+  { reply: (sessionID, formID, answer) => bridge.replyForm(sessionID, formID, answer) },
+  () => config.QUESTION_TIMEOUT_MINUTES,
+)
+bridge.subscribeAll((e) => trackForms(questions, e))
+
 let chats!: Chats
-const bot = createBot(config, bridge, (b) => (chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined))))
+const bot = createBot(
+  config,
+  bridge,
+  (b) => (chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions)),
+)
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 
 await bot.api.setMyCommands([
@@ -56,6 +67,7 @@ async function shutdown(signal: string) {
   stopping = true
   console.log(`${signal} received, shutting down…`)
   admin.stop(true)
+  questions.dispose()
   await bot.stop().catch(() => {})
   await bridge.close().catch((err) => console.error("OpenCode close failed", err))
   store.close()

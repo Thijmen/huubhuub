@@ -18,6 +18,7 @@ export function SettingsPage() {
           <AgentSetting setting={get("DEFAULT_AGENT")!} agents={data.agents} onSaved={reload} />
           <UsersSetting setting={get("ALLOWED_USER_IDS")!} onSaved={reload} />
           <ThreadSetting setting={get("THREAD_MODE")!} onSaved={reload} />
+          <QuestionTimeoutSetting setting={get("QUESTION_TIMEOUT_MINUTES")!} onSaved={reload} />
         </div>
       )}
     </>
@@ -189,6 +190,36 @@ function ThreadSetting({ setting, onSaved }: { setting: SettingInfo; onSaved: ()
           { value: "off", label: "Single chat" },
         ]}
       />
+    </SettingCard>
+  )
+}
+
+function QuestionTimeoutSetting({ setting, onSaved }: { setting: SettingInfo; onSaved: () => Promise<void> }) {
+  const { busy, save } = useSave("QUESTION_TIMEOUT_MINUTES", onSaved)
+  const [draft, setDraft] = useState(setting.value)
+  useEffect(() => setDraft(setting.value), [setting.value])
+  const valid = /^[1-9]\d*$/.test(draft.trim())
+  return (
+    <SettingCard
+      title="Question timeout"
+      description="How long the agent waits for an answer to one of its questions. After that the question is dismissed and the agent carries on."
+      setting={setting}
+      busy={busy}
+      onReset={() => save(null)}
+    >
+      <form
+        className="env-inline"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (valid) void save(draft.trim())
+        }}
+      >
+        <input className="input mono" inputMode="numeric" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <span className="muted small">minutes</span>
+        <Button busy={busy} disabled={!valid || draft.trim() === setting.value} type="submit">
+          Save
+        </Button>
+      </form>
     </SettingCard>
   )
 }
