@@ -39,6 +39,9 @@ export class ChatView {
       offEvents()
       offQuestions()
     }
+    // A view created while a question is already open (e.g. a scheduled run that was quiet so far).
+    const open = questions.pending(sessionID)
+    if (open) queueMicrotask(() => this.onQuestion(open))
   }
 
   get busy(): boolean {

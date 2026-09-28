@@ -19,6 +19,7 @@ export function SettingsPage() {
           <UsersSetting setting={get("ALLOWED_USER_IDS")!} onSaved={reload} />
           <ThreadSetting setting={get("THREAD_MODE")!} onSaved={reload} />
           <QuestionTimeoutSetting setting={get("QUESTION_TIMEOUT_MINUTES")!} onSaved={reload} />
+          <TimeZoneSetting setting={get("SCHEDULE_TIMEZONE")!} onSaved={reload} />
         </div>
       )}
     </>
@@ -217,6 +218,41 @@ function QuestionTimeoutSetting({ setting, onSaved }: { setting: SettingInfo; on
         <input className="input mono" inputMode="numeric" value={draft} onChange={(e) => setDraft(e.target.value)} />
         <span className="muted small">minutes</span>
         <Button busy={busy} disabled={!valid || draft.trim() === setting.value} type="submit">
+          Save
+        </Button>
+      </form>
+    </SettingCard>
+  )
+}
+
+const TIME_ZONES: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? []
+
+function TimeZoneSetting({ setting, onSaved }: { setting: SettingInfo; onSaved: () => Promise<void> }) {
+  const { busy, save } = useSave("SCHEDULE_TIMEZONE", onSaved)
+  const [draft, setDraft] = useState(setting.value)
+  useEffect(() => setDraft(setting.value), [setting.value])
+  return (
+    <SettingCard
+      title="Schedule time zone"
+      description="Scheduled prompts run on this clock, including daylight saving changes. Defaults to the server's time zone."
+      setting={setting}
+      busy={busy}
+      onReset={() => save(null)}
+    >
+      <form
+        className="env-inline"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (draft.trim()) void save(draft.trim())
+        }}
+      >
+        <input className="input mono" list="time-zones" placeholder="Europe/Amsterdam" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <datalist id="time-zones">
+          {TIME_ZONES.map((tz) => (
+            <option key={tz} value={tz} />
+          ))}
+        </datalist>
+        <Button busy={busy} disabled={!draft.trim() || draft.trim() === setting.value} type="submit">
           Save
         </Button>
       </form>

@@ -2839,3 +2839,71 @@ pre.plain {
   opacity: 0.6;
   cursor: default;
 }
+
+/* Schedules */
+
+.schedule-chat {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.schedule-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.schedule-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.schedule-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.schedule-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.schedule-prompt {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 7.5em;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.schedule-runs td {
+  vertical-align: middle;
+}
+
+.schedule-selects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.schedule-silent {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.schedule-silent p {
+  margin: 2px 0 0;
+}
+
+.error-text {
+  color: var(--error);
+}

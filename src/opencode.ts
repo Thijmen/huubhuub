@@ -124,17 +124,29 @@ export class Bridge {
   }
 
   async createSession(key: ChatKey, carry: Carry = {}, autoTitle = false): Promise<string> {
+    const id = await this.createDetached(carry, { telegramChatId: key.chatId, ...(key.threadId ? { telegramThreadId: key.threadId } : {}) })
+    this.store.set(key, id, autoTitle)
+    return id
+  }
+
+  /** A session that isn't bound to a Telegram thread (yet), e.g. a scheduled run. */
+  async createDetached(carry: Carry, metadata: Record<string, string | number>): Promise<string> {
     const model = carry.model ?? (this.config.DEFAULT_MODEL ? parseModelRef(this.config.DEFAULT_MODEL) : undefined)
     const agent = carry.agent ?? this.config.DEFAULT_AGENT
     // Leave the title unset so OpenCode generates one from the first prompt; bot-created topics are renamed to match.
     const session = await this.host.sessions.create({
       ...this.location,
-      metadata: { telegramChatId: key.chatId, ...(key.threadId ? { telegramThreadId: key.threadId } : {}) },
+      metadata,
       ...(model ? { model } : {}),
       ...(agent ? { agent } : {}),
     })
-    this.store.set(key, session.id, autoTitle)
     return session.id
+  }
+
+  /** The model (as `provider/model`) and agent a session currently uses. */
+  async selection(sessionID: string): Promise<{ model: string | null; agent: string | null }> {
+    const carry = await this.carryFrom(sessionID)
+    return { model: carry.model ? `${carry.model.providerID}/${carry.model.id}` : null, agent: carry.agent ?? null }
   }
 
   /** The session bound to a chat/thread. A new thread starts a new session with the chat's latest model and agent. */

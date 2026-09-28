@@ -149,7 +149,7 @@ export interface EnvPlan {
 }
 
 export interface SettingInfo {
-  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "QUESTION_TIMEOUT_MINUTES"
+  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE"
   value: string
   source: "admin" | "env" | "default"
   envValue: string
@@ -159,6 +159,51 @@ export interface SettingsResponse {
   settings: SettingInfo[]
   models: { ref: string; name: string; provider: string }[]
   agents: { id: string; name: string; description?: string }[]
+}
+
+export type RunStatus = "running" | "ok" | "failed" | "silent" | "skipped" | "missed"
+
+export interface ScheduleRun {
+  id: number
+  scheduleId: number
+  sessionID: string | null
+  startedAt: number
+  endedAt: number | null
+  status: RunStatus
+  error: string | null
+}
+
+export interface ScheduleInfo {
+  id: number
+  chatId: number
+  name: string
+  kind: "cron" | "interval" | "once"
+  spec: string
+  prompt: string
+  model: string | null
+  agent: string | null
+  silent: boolean
+  paused: boolean
+  failStreak: number
+  nextAt: number | null
+  createdAt: number
+  description: string
+  running: boolean
+  runs: ScheduleRun[]
+}
+
+export interface SchedulesResponse {
+  timeZone: string
+  chats: { id: number; title: string | null }[]
+  schedules: ScheduleInfo[]
+}
+
+export interface SchedulePreview {
+  kind: ScheduleInfo["kind"]
+  spec: string
+  description: string
+  upcoming: number[]
+  timeZone: string
 }
 
 export interface ThreadRow {

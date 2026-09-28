@@ -7,7 +7,9 @@ import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
 import type { QuestionAction } from "../question"
-import type { Store } from "../store"
+import { defaultName, describe, firstRun, parseWhen, SpecError, upcoming } from "../schedule-spec"
+import type { Scheduler } from "../scheduler"
+import type { Schedule, SchedulePatch, Store } from "../store"
 import { conversation, eventStream } from "./chat"
 import index from "./web/index.html"
 
@@ -18,6 +20,7 @@ interface Deps {
   settings: Settings
   bot: Bot
   chats: Chats
+  scheduler: Scheduler
   token: string
 }
 
@@ -201,6 +204,93 @@ export function startAdmin(deps: Deps) {
             d.settings.set(key, value === null ? undefined : String(value).trim())
           } catch (err) {
             throw new HttpError(400, errorMessage(err))
+          }
+          if (key === "SCHEDULE_TIMEZONE") d.scheduler.reschedule()
+        }),
+      },
+
+      "/api/schedules": {
+        GET: api((_, d) => schedules(d)),
+        POST: api(async (req, d) => {
+          const body = await read<ScheduleInput & { chatId: number }>(req)
+          if (!Number.isSafeInteger(body.chatId) || !d.store.latest(body.chatId)) throw new HttpError(400, "Pick a chat the bot has talked in.")
+          const prompt = body.prompt?.trim()
+          if (!prompt) throw new HttpError(400, "Write the prompt to run.")
+          const when = specOrThrow(body.when ?? "", d)
+          await checkSelection(d, body.model ?? null, body.agent ?? null)
+          const s = d.store.createSchedule({
+            chatId: body.chatId,
+            name: body.name?.trim() || defaultName(prompt),
+            ...when,
+            prompt,
+            model: body.model || null,
+            agent: body.agent || null,
+            silent: Boolean(body.silent),
+            nextAt: firstRun(when, Date.now(), d.config.SCHEDULE_TIMEZONE),
+          })
+          d.scheduler.refresh()
+          return scheduleView(d, s)
+        }),
+      },
+      "/api/schedules/preview": {
+        POST: api(async (req, d) => {
+          const { when } = await read<{ when: string }>(req)
+          const parsed = specOrThrow(when ?? "", d)
+          const tz = d.config.SCHEDULE_TIMEZONE
+          return { ...parsed, description: describe(parsed, tz), upcoming: upcoming(parsed, Date.now(), tz), timeZone: tz }
+        }),
+      },
+      "/api/schedules/:id": {
+        PUT: api(async (req, d) => {
+          const s = scheduleOrThrow(d, param(req, "id"))
+          const body = await read<ScheduleInput & { paused?: boolean }>(req)
+          const patch: SchedulePatch = {}
+          if (body.name !== undefined) {
+            const name = body.name.trim()
+            if (!name) throw new HttpError(400, "The name can't be empty.")
+            patch.name = name.slice(0, 80)
+          }
+          if (body.prompt !== undefined) {
+            if (!body.prompt.trim()) throw new HttpError(400, "The prompt can't be empty.")
+            patch.prompt = body.prompt.trim()
+          }
+          if (body.model !== undefined || body.agent !== undefined) {
+            await checkSelection(d, body.model ?? null, body.agent ?? null)
+            if (body.model !== undefined) patch.model = body.model || null
+            if (body.agent !== undefined) patch.agent = body.agent || null
+          }
+          if (body.silent !== undefined) patch.silent = Boolean(body.silent)
+          const now = Date.now()
+          if (body.when !== undefined) {
+            const when = specOrThrow(body.when, d)
+            Object.assign(patch, when, { nextAt: firstRun(when, now, d.config.SCHEDULE_TIMEZONE) })
+          }
+          if (body.paused !== undefined) {
+            patch.paused = body.paused
+            if (!body.paused) {
+              patch.failStreak = 0
+              const kind = patch.kind ?? s.kind
+              if (kind !== "once" && patch.nextAt === undefined) patch.nextAt = firstRun({ kind, spec: patch.spec ?? s.spec }, now, d.config.SCHEDULE_TIMEZONE)
+            }
+          }
+          const updated = d.store.updateSchedule(s.id, patch)!
+          d.scheduler.refresh()
+          return scheduleView(d, updated)
+        }),
+        DELETE: api((req, d) => {
+          const s = scheduleOrThrow(d, param(req, "id"))
+          d.store.deleteSchedule(s.id)
+          d.scheduler.refresh()
+        }),
+      },
+      "/api/schedules/:id/run": {
+        POST: api((req, d) => {
+          const s = scheduleOrThrow(d, param(req, "id"))
+          try {
+            d.scheduler.runNow(s.id)
+          } catch (err) {
+            if (err instanceof SpecError) throw new HttpError(409, err.message)
+            throw err
           }
         }),
       },
@@ -436,9 +526,72 @@ async function threads(d: Deps) {
   )
 }
 
-/** Only sessions bound to a Telegram thread are exposed through the portal. */
+interface ScheduleInput {
+  name?: string
+  when?: string
+  prompt?: string
+  model?: string | null
+  agent?: string | null
+  silent?: boolean
+}
+
+function specOrThrow(when: string, d: Deps) {
+  try {
+    return parseWhen(when, Date.now(), d.config.SCHEDULE_TIMEZONE)
+  } catch (err) {
+    if (err instanceof SpecError) throw new HttpError(400, err.message)
+    throw err
+  }
+}
+
+function scheduleOrThrow(d: Deps, raw: string): Schedule {
+  const s = d.store.schedule(Number(raw))
+  if (!s) throw new HttpError(404, "No schedule with that ID.")
+  return s
+}
+
+async function checkSelection(d: Deps, model: string | null, agent: string | null): Promise<void> {
+  if (model) {
+    const slash = model.indexOf("/")
+    const known = (await d.bridge.models()).some((m) => slash > 0 && m.providerID === model.slice(0, slash) && m.id === model.slice(slash + 1))
+    if (!known) throw new HttpError(400, `${model} isn't available.`)
+  }
+  if (agent && !(await d.bridge.agents()).some((a) => a.id === agent)) throw new HttpError(400, `Unknown agent ${agent}.`)
+}
+
+function scheduleView(d: Deps, s: Schedule) {
+  const tz = d.config.SCHEDULE_TIMEZONE
+  return {
+    ...s,
+    description: describe(s, tz),
+    running: d.scheduler.running(s.id),
+    runs: d.store.runs(s.id, 15),
+  }
+}
+
+const chatTitles = new Map<number, { title: string | null; at: number }>()
+
+async function chatTitle(d: Deps, id: number): Promise<string | null> {
+  const hit = chatTitles.get(id)
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.title
+  const chat = await d.bot.api.getChat(id).catch(() => undefined)
+  const title = chat
+    ? ("title" in chat && chat.title) || [("first_name" in chat && chat.first_name) || "", ("last_name" in chat && chat.last_name) || ""].join(" ").trim() || null
+    : null
+  chatTitles.set(id, { title, at: Date.now() })
+  return title
+}
+
+async function schedules(d: Deps) {
+  const list = d.store.schedules()
+  const chatIds = [...new Set([...list.map((s) => s.chatId), ...d.store.list(1000).map((t) => t.chatId)])]
+  const chats = await Promise.all(chatIds.map(async (id) => ({ id, title: await chatTitle(d, id) })))
+  return { timeZone: d.config.SCHEDULE_TIMEZONE, chats, schedules: list.map((s) => scheduleView(d, s)) }
+}
+
+/** Only sessions bound to a Telegram thread, or started by a schedule, are exposed through the portal. */
 function knownSession(d: Deps, sessionID: string): void {
-  if (!d.store.bySession(sessionID)) throw new HttpError(404, "No conversation with that ID.")
+  if (!d.store.bySession(sessionID) && !d.store.runBySession(sessionID)) throw new HttpError(404, "No conversation with that ID.")
 }
 
 function authorised(req: Request, token: string): boolean {
