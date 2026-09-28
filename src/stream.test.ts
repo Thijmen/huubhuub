@@ -70,10 +70,23 @@ describe("ChatView", () => {
     emit("session.tool.input.started", { id: "t1", name: "webfetch" })
     emit("session.execution.succeeded")
     await settle()
-    const final = calls.at(-1)!.text!
-    expect(final).toContain("webfetch: https://x.nl")
-    expect(final).toContain("Het <b>nieuws</b>")
-    expect(final).not.toContain("…")
+    expect(calls.at(-1)!.text).toBe("Het <b>nieuws</b>")
+  })
+
+  test("shows what a running tool is doing, then only the answer", async () => {
+    const { emit, calls } = setup()
+    emit("session.execution.started")
+    emit("session.tool.input.started", { id: "t1", name: "webfetch" })
+    emit("session.tool.called", { id: "t1", input: { url: "https://www.1twente.nl" } })
+    await settle(600)
+    expect(calls.at(-1)).toMatchObject({ method: "sendMessageDraft", text: "🌐 Reading 1twente.nl… 0s" })
+    emit("session.tool.success", { id: "t1" })
+    emit("session.text.delta", { assistantMessageID: "m", ordinal: 0, delta: "Nieuws" })
+    await settle(600)
+    expect(calls.at(-1)!.text).toMatch(/^Nieuws\n\n✻ .+… \ds$/)
+    emit("session.execution.succeeded")
+    await settle()
+    expect(sent(calls)).toEqual(["Nieuws"])
   })
 
   test("keeps the live text when storage has less", async () => {
@@ -107,7 +120,8 @@ describe("ChatView", () => {
     emit("session.execution.succeeded")
     await settle()
     const drafts = calls.filter((c) => c.method === "sendMessageDraft")
-    expect(drafts.map((d) => d.text)).toEqual(["Hel", "Hello"])
+    expect(drafts.some((d) => d.text!.startsWith("Hel\n\n✻ "))).toBe(true)
+    expect(drafts.at(-1)!.text).toStartWith("Hello\n\n✻ ")
     expect(new Set(drafts.map((d) => d.draftID)).size).toBe(1)
     expect(calls.some((c) => c.method === "editMessageText")).toBe(false)
     expect(sent(calls)).toEqual(["Hello"])
@@ -120,8 +134,10 @@ describe("ChatView", () => {
     await settle(1300)
     emit("session.execution.succeeded")
     await settle()
-    expect(calls.map((c) => c.method)).toEqual(["sendMessage", "editMessageText"])
-    expect(calls.map((c) => c.text)).toEqual(["Hi\n\n…", "Hi"])
+    expect(calls[0]).toMatchObject({ method: "sendMessage" })
+    expect(calls[0]!.text).toStartWith("Hi\n\n✻ ")
+    expect(calls.slice(1).every((c) => c.method === "editMessageText")).toBe(true)
+    expect(calls.at(-1)!.text).toBe("Hi")
   })
 
   test("falls back to editing when drafts are unavailable", async () => {
@@ -133,7 +149,8 @@ describe("ChatView", () => {
     await settle(1300)
     emit("session.execution.succeeded")
     await settle()
-    expect(calls.map((c) => c.method)).toEqual(["sendMessage", "editMessageText", "editMessageText"])
+    expect(calls[0]!.method).toBe("sendMessage")
+    expect(calls.slice(1).every((c) => c.method === "editMessageText")).toBe(true)
     expect(calls.at(-1)!.text).toBe("Hi!")
   })
 

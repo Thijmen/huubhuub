@@ -76,15 +76,3 @@ export function chunkText(text: string, limit = TELEGRAM_LIMIT - 96): string[] {
 export function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + "…"
 }
-
-export function describeTool(name: string, input: Record<string, unknown> | undefined): string {
-  const pick = (...keys: string[]) => {
-    for (const k of keys) {
-      const v = input?.[k]
-      if (typeof v === "string" && v) return v
-    }
-    return ""
-  }
-  const detail = pick("command", "filePath", "path", "pattern", "url", "query", "description", "agent")
-  return detail ? `${name}: ${truncate(detail.replace(/\s+/g, " "), 80)}` : name
-}

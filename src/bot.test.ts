@@ -6,7 +6,8 @@ import { join, resolve } from "node:path"
 import { isProbablyText, sniffImage } from "./chats"
 import { applySetting, loadConfig, parseModelRef } from "./config"
 import { parseEnvText, planEnvImport } from "./env-import"
-import { chunkText, describeTool, markdownToHtml } from "./format"
+import { statusLine, toolActivity } from "./activity"
+import { chunkText, markdownToHtml } from "./format"
 import { parseMcpImport, splitCommand } from "./mcp-import"
 import { threadParams } from "./reply"
 import { Store } from "./store"
@@ -54,11 +55,19 @@ describe("chunkText", () => {
   })
 })
 
-describe("describeTool", () => {
-  test("uses the most relevant input field", () => {
-    expect(describeTool("shell", { command: "ls   -la" })).toBe("shell: ls -la")
-    expect(describeTool("read", { filePath: "/a/b.ts" })).toBe("read: /a/b.ts")
-    expect(describeTool("todo", {})).toBe("todo")
+describe("activity", () => {
+  test("describes tool calls in plain words", () => {
+    expect(toolActivity("webfetch", { url: "https://www.1twente.nl/nieuws" })).toBe("🌐 Reading 1twente.nl")
+    expect(toolActivity("bash", { command: "ls   -la" })).toBe("⚙️ Running ls -la")
+    expect(toolActivity("read", { filePath: "/a/b.ts" })).toBe("📖 Reading b.ts")
+    expect(toolActivity("websearch", { query: "weer Enschede" })).toBe('🔎 Searching the web for "weer Enschede"')
+    expect(toolActivity("my_mcp_tool", {})).toBe("🔧 Using my_mcp_tool")
+  })
+
+  test("rotates a thinking verb and shows elapsed time", () => {
+    expect(statusLine(undefined, 1500, 0)).toBe("✻ Pondering… 1s")
+    expect(statusLine(undefined, 4500, 0)).toBe("✻ Mulling it over… 4s")
+    expect(statusLine("🌐 Reading x.nl", 12_000, 0)).toBe("🌐 Reading x.nl… 12s")
   })
 })
 

@@ -1,19 +1,21 @@
 import { InlineKeyboard, type Api } from "grammy"
-import { describeTool, truncate } from "./format"
+import { statusLine, toolActivity, VERBS } from "./activity"
+import { truncate } from "./format"
 import type { Bridge, SessionEvent, TranscriptBlock } from "./opencode"
 import { shortID, type QuestionFlow, type Questions } from "./question"
 import { Reply, threadParams, type StreamingMode } from "./reply"
 import type { ChatKey } from "./store"
 
 type TextBlock = { kind: "text"; key: string; text: string }
-type ToolBlock = { kind: "tool"; id: string; name: string; label: string; status: "running" | "ok" | "error" }
+type ToolBlock = { kind: "tool"; id: string; name: string; input?: Record<string, unknown>; status: "running" | "ok" | "error" }
 type Block = TextBlock | ToolBlock
 
 const EDIT_INTERVAL_MS = 1200
 const DRAFT_INTERVAL_MS = 500
+/** How often the status line's timer refreshes without new events. */
+const TICK_MS = { draft: 1000, edit: 3000 } as const
 /** A run with no events for this long is checked against OpenCode, in case its end was missed. */
 const STALL_MS = 20_000
-const TOOL_ICON = { running: "🔧", ok: "✅", error: "❌" } as const
 
 /** Renders one OpenCode session into a Telegram chat, one reply per execution. */
 export class ChatView {
@@ -24,7 +26,11 @@ export class ChatView {
   private footer = ""
   private timer: ReturnType<typeof setTimeout> | undefined
   private watchdog: ReturnType<typeof setInterval> | undefined
+  private ticker: ReturnType<typeof setInterval> | undefined
   private lastEvent = 0
+  private startedAt = 0
+  /** Where in the verb list this run starts, so not every reply opens with the same word. */
+  private verbSeed = 0
   /** One Reply per execution (and per part split off by a question), so a finishing run can't touch the next. */
   private reply: Reply
   private readonly unsubscribe: () => void
@@ -76,8 +82,10 @@ export class ChatView {
   private stopTimers(): void {
     if (this.timer) clearTimeout(this.timer)
     if (this.watchdog) clearInterval(this.watchdog)
+    if (this.ticker) clearInterval(this.ticker)
     this.timer = undefined
     this.watchdog = undefined
+    this.ticker = undefined
   }
 
   private onEvent(e: SessionEvent): void {
@@ -97,11 +105,11 @@ export class ChatView {
       case "session.tool.input.started":
         if (e.data.name === "question") break
         if (!this.running) this.begin()
-        this.blocks.push({ kind: "tool", id: e.data.id, name: e.data.name, label: e.data.name, status: "running" })
+        this.blocks.push({ kind: "tool", id: e.data.id, name: e.data.name, status: "running" })
         this.schedule()
         break
       case "session.tool.called":
-        this.updateTool(e.data.id, (t) => (t.label = describeTool(t.name, e.data.input)))
+        this.updateTool(e.data.id, (t) => (t.input = e.data.input))
         break
       case "session.tool.success":
         this.updateTool(e.data.id, (t) => (t.status = "ok"))
@@ -143,11 +151,14 @@ export class ChatView {
     this.resumed = false
     this.blocks = []
     this.footer = ""
-    this.lastEvent = Date.now()
+    this.lastEvent = this.startedAt = Date.now()
+    this.verbSeed = Math.floor(Math.random() * VERBS.length)
     this.reply.dispose()
     this.reply = this.newReply()
     this.reply.startTyping()
     this.watchdog = setInterval(() => void this.checkStalled(), STALL_MS / 2)
+    this.ticker = setInterval(() => this.schedule(), TICK_MS[this.reply.drafting ? "draft" : "edit"])
+    this.schedule()
   }
 
   /** Finish a run whose end event never arrived (e.g. the event stream dropped), using what OpenCode stored. */
@@ -168,7 +179,7 @@ export class ChatView {
     if (this.timer) clearTimeout(this.timer)
     this.timer = undefined
     this.reply.stopTyping()
-    const body = renderBlocks(this.blocks)
+    const body = renderText(this.blocks)
     const flushed = body ? this.reply.finalize(body) : (this.reply.dispose(), Promise.resolve())
     this.blocks = []
     this.footer = ""
@@ -232,7 +243,7 @@ export class ChatView {
       )
       if (stored.length && textLength(stored) >= textLength(live)) blocks = stored
     }
-    const body = renderBlocks(blocks)
+    const body = renderText(blocks)
     if (resumed && !body && !footer) return reply.dispose()
     await reply.finalize([body, footer].filter(Boolean).join("\n\n") || "(no response)")
   }
@@ -252,10 +263,11 @@ export class ChatView {
     this.schedule()
   }
 
-  /** The in-progress reply. A draft shows its own progress; an edited message needs the "…". */
+  /** The reply so far with a status line under it; the status disappears once the reply is final. */
   private renderProgress(): string {
-    const tail = this.footer || (this.reply.drafting ? "" : "…")
-    return [renderBlocks(this.blocks), tail].filter(Boolean).join("\n\n")
+    const tool = this.blocks.findLast((b): b is ToolBlock => b.kind === "tool" && b.status === "running")
+    const status = this.footer || statusLine(tool && toolActivity(tool.name, tool.input), Date.now() - this.startedAt, this.verbSeed)
+    return [renderText(this.blocks), status].filter(Boolean).join("\n\n")
   }
 
   private schedule(): void {
@@ -270,9 +282,10 @@ export class ChatView {
   }
 }
 
-function renderBlocks(blocks: Block[]): string {
+/** Only the answer text; tool calls show up in the status line while they run. */
+function renderText(blocks: Block[]): string {
   return blocks
-    .map((b) => (b.kind === "text" ? b.text.trim() : `${TOOL_ICON[b.status]} \`${b.label.replace(/`/g, "'")}\``))
+    .map((b) => (b.kind === "text" ? b.text.trim() : ""))
     .filter(Boolean)
     .join("\n\n")
 }
@@ -280,7 +293,7 @@ function renderBlocks(blocks: Block[]): string {
 function toBlock(b: TranscriptBlock, i: number): Block[] {
   if (b.kind === "text") return [{ kind: "text", key: `stored:${i}`, text: b.text }]
   if (b.name === "question") return []
-  return [{ kind: "tool", id: b.id, name: b.name, label: describeTool(b.name, b.input), status: b.status }]
+  return [{ kind: "tool", id: b.id, name: b.name, input: b.input, status: b.status }]
 }
 
 function textLength(blocks: Block[]): number {
