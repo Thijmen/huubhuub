@@ -326,7 +326,7 @@ async function providers(d: Deps) {
     ),
     models: byProvider.get(i.id) ?? 0,
   }))
-  // Providers defined in opencode.jsonc have no integration entry but still contribute models.
+  // Providers defined in bot.opencode.jsonc have no integration entry but still contribute models.
   const custom = provs.data
     .filter((p) => !integrationIds.has(p.integrationID ?? p.id))
     .map((p) => ({ id: p.id, name: p.name, methods: [], connections: [], models: byProvider.get(p.id) ?? 0, custom: true }))

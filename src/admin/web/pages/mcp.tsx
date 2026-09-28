@@ -45,7 +45,7 @@ export function McpPage() {
                   </div>
                   <div className="mcp-actions">
                     <McpBadge status={s.status} />
-                    {s.source === "config" && <Badge>opencode.jsonc</Badge>}
+                    {s.source === "config" && <Badge>bot.opencode.jsonc</Badge>}
                     <Toggle
                       checked={enabled}
                       disabled={!s.config || busy === `t-${s.name}`}
