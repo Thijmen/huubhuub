@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
 import { z } from "zod"
+import { isTimeZone, serverTimeZone } from "./schedule-spec"
 
 /** `/workspace` and `/data` in the container; `./workspace` and `./data` when running locally. */
 function defaultDir(name: string): string {
@@ -37,12 +38,16 @@ const schema = z.object({
   ADMIN_TOKEN: z.string().optional(),
   ADMIN_PUBLIC_URL: z.string().url().optional(),
   QUESTION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(DEFAULT_QUESTION_TIMEOUT),
+  SCHEDULE_TIMEZONE: z
+    .string()
+    .default(() => serverTimeZone())
+    .refine(isTimeZone, "must be an IANA time zone such as Europe/Amsterdam"),
 })
 
 export type Config = z.infer<typeof schema>
 
 /** Settings the admin UI can change at runtime. They are stored in SQLite and override the environment. */
-export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "QUESTION_TIMEOUT_MINUTES"] as const
+export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE"] as const
 export type RuntimeSetting = (typeof RUNTIME_SETTINGS)[number]
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -80,6 +85,12 @@ export function applySetting(config: Config, key: RuntimeSetting, value: string 
       const minutes = raw ? Number(raw) : DEFAULT_QUESTION_TIMEOUT
       if (!Number.isInteger(minutes) || minutes <= 0) throw new Error("Question timeout must be a whole number of minutes above 0.")
       config.QUESTION_TIMEOUT_MINUTES = minutes
+      break
+    }
+    case "SCHEDULE_TIMEZONE": {
+      const tz = raw.trim() || serverTimeZone()
+      if (!isTimeZone(tz)) throw new Error(`"${tz}" isn't a time zone. Use an IANA name such as Europe/Amsterdam.`)
+      config.SCHEDULE_TIMEZONE = tz
       break
     }
   }

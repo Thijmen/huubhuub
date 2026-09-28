@@ -5,6 +5,7 @@ import { McpPage } from "./pages/mcp"
 import { EnvPage } from "./pages/env"
 import { OverviewPage } from "./pages/overview"
 import { ProvidersPage } from "./pages/providers"
+import { SchedulesPage } from "./pages/schedules"
 import { SettingsPage } from "./pages/settings"
 import { ThreadsPage } from "./pages/threads"
 import { Button, ToastProvider } from "./ui"
@@ -15,6 +16,7 @@ const TABS = [
   { id: "env", label: "Paste env", icon: "⌘" },
   { id: "mcp", label: "MCP servers", icon: "⬡" },
   { id: "threads", label: "Conversations", icon: "✦" },
+  { id: "schedules", label: "Schedules", icon: "⏰" },
   { id: "settings", label: "Settings", icon: "⚙" },
 ] as const
 
@@ -107,6 +109,7 @@ function App() {
           {tab === "env" && <EnvPage />}
           {tab === "mcp" && <McpPage />}
           {tab === "threads" && <ThreadsPage selected={thread} open={openThread} />}
+          {tab === "schedules" && <SchedulesPage openThread={(id) => (location.hash = `threads/${encodeURIComponent(id)}`)} />}
           {tab === "settings" && <SettingsPage />}
         </div>
       </main>

@@ -152,6 +152,35 @@ export class Chats {
     return { key: from, sessionID }
   }
 
+  /**
+   * Give a scheduled run somewhere to talk: a new topic when the chat supports it, else the main
+   * chat, whose session it replaces. Returns where the run lives.
+   */
+  async openScheduled(chatId: number, title: string, sessionID: string, intro: string, preface?: (key: ChatKey) => Promise<void>): Promise<ChatKey> {
+    const main = { chatId, threadId: 0 }
+    const chat = await this.api.getChat(chatId).catch(() => undefined)
+    let key: ChatKey = main
+    if (chat && this.threaded(chat)) {
+      const topic = await this.api.createForumTopic(chatId, truncate(title, 128)).catch((err) => {
+        console.error(`Couldn't create a topic for a scheduled run in chat ${chatId}; using the main chat`, err)
+        return undefined
+      })
+      if (topic) key = { chatId, threadId: topic.message_thread_id }
+    }
+    this.store.set(key, sessionID, false)
+    await this.api
+      .sendMessage(chatId, intro, { parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...threadParams(key) })
+      .catch((err) => console.error("schedule intro failed", err))
+    await preface?.(key).catch((err) => console.error("schedule output failed", err))
+    await this.view(key)
+    return key
+  }
+
+  /** The session of a thread, or the chat's most recent one. */
+  sessionIn(key: ChatKey): string | undefined {
+    return (this.store.get(key) ?? this.store.latest(key.chatId))?.sessionID
+  }
+
   async send(key: ChatKey, text: string, files: Attachment[] = []): Promise<void> {
     const view = await this.view(key)
     this.store.touch(key)

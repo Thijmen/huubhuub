@@ -85,6 +85,25 @@ When the agent uses its `question` tool, the bot posts the question with a butto
 - ✖ Skip dismisses the whole set. If you don't answer within `QUESTION_TIMEOUT_MINUTES` (default 10, also in the admin UI), the question times out. Either way the agent is told and carries on.
 - The same question shows in the admin UI's conversation view. Whichever side answers first wins, and the Telegram message collapses into a summary.
 
+## Scheduled prompts
+
+`/schedule <when> <prompt>` runs a prompt on its own. The bot shows the next run time and asks you to confirm.
+
+| When | Example |
+| --- | --- |
+| Cron (5 fields) | `/schedule 0 8 * * 1-5 Summarise yesterday's PRs` |
+| Shortcuts | `@hourly`, `@daily`, `@daily 08:30` |
+| Intervals | `every 30m`, `every 2h` |
+| Once | `in 2h`, `at 18:00`, `at 2026-10-01 09:00` |
+
+- Times use `SCHEDULE_TIMEZONE` (default: the server's time zone, also set in the admin UI), including daylight saving changes.
+- Each run starts a fresh session in a new topic, `⏰ <name> · <date time>`, or in the main chat if the chat has no topics. The job keeps the model and agent of the thread you created it in.
+- **Silent** jobs (toggle it when confirming) may reply `[SILENT]` when there's nothing to report; then nothing is posted. Otherwise their output is posted all at once when the run ends.
+- `/schedules` lists this chat's jobs, with buttons to pause or resume, run now, rename and delete.
+- If a run is still going when the next one is due, the next one is skipped. Runs that came due while the bot was down are skipped too, except one-off jobs, which run at startup. All of this shows in the run history.
+- After 3 failed runs in a row a job pauses itself and tells you.
+- The admin UI's **Schedules** page shows every job grouped by chat, with its run history. You can create jobs there and edit any field.
+
 ## Admin UI
 
 The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN_TOKEN`. If you don't set one, the bot generates a token, stores it in `/data`, and prints it at startup.
@@ -92,7 +111,7 @@ The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN
 - **Providers**: search all integrations OpenCode knows about. Paste an API key, run the OAuth/device-code sign-in, switch between or remove stored credentials, or set the provider's env var.
 - **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. Models appear straight away, without a restart.
 - **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `bot.opencode.jsonc`.
-- **Settings**: default model and agent, the Telegram allowlist, thread mode and the question timeout. Values set here override the environment. "Reset" goes back to the env value.
+- **Settings**: default model and agent, the Telegram allowlist, thread mode, the question timeout and the schedule time zone. Values set here override the environment. "Reset" goes back to the env value.
 - **Conversations**: every thread, live. It streams replies, tool calls and reasoning, with per-turn tokens and cost. You can reply, stop a run, switch model or agent, or start a new topic from the portal. Portal messages are mirrored into Telegram with a 💻 tag, so the reply shows up in both places.
 
 The admin UI can install credentials and run commands through MCP, so treat the token like a root password. `docker-compose.yml` binds the port to `127.0.0.1`. Put a TLS reverse proxy in front before exposing it anywhere else.

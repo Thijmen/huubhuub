@@ -22,6 +22,54 @@ export interface McpRecord {
   config: Record<string, unknown> | null
 }
 
+export type ScheduleKind = "cron" | "interval" | "once"
+export type RunStatus = "running" | "ok" | "failed" | "silent" | "skipped" | "missed"
+
+export interface Schedule {
+  id: number
+  chatId: number
+  name: string
+  kind: ScheduleKind
+  /** A cron expression or nickname, `every 30m`, or the ISO time of a one-off job. */
+  spec: string
+  prompt: string
+  /** `provider/model`, or null for the default. */
+  model: string | null
+  agent: string | null
+  silent: boolean
+  paused: boolean
+  failStreak: number
+  /** Epoch ms of the next run; null once a one-off job has fired. */
+  nextAt: number | null
+  createdAt: number
+}
+
+export interface ScheduleRun {
+  id: number
+  scheduleId: number
+  sessionID: string | null
+  startedAt: number
+  endedAt: number | null
+  status: RunStatus
+  error: string | null
+}
+
+export type NewSchedule = Pick<Schedule, "chatId" | "name" | "kind" | "spec" | "prompt" | "model" | "agent" | "silent" | "nextAt">
+export type SchedulePatch = Partial<Omit<Schedule, "id" | "chatId" | "createdAt">>
+
+const SCHEDULE_COLUMNS: Record<keyof SchedulePatch, string> = {
+  name: "name",
+  kind: "kind",
+  spec: "spec",
+  prompt: "prompt",
+  model: "model",
+  agent: "agent",
+  silent: "silent",
+  paused: "paused",
+  failStreak: "fail_streak",
+  nextAt: "next_at",
+}
+
 export class Store {
   private db: Database
 
@@ -40,6 +88,32 @@ export class Store {
     this.db.run("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     this.db.run("CREATE TABLE IF NOT EXISTS env_vars (name TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
     this.db.run("CREATE TABLE IF NOT EXISTS mcp_servers (name TEXT PRIMARY KEY, config TEXT, updated_at INTEGER NOT NULL)")
+    this.db.run(`CREATE TABLE IF NOT EXISTS schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      spec TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      model TEXT,
+      agent TEXT,
+      silent INTEGER NOT NULL DEFAULT 0,
+      paused INTEGER NOT NULL DEFAULT 0,
+      fail_streak INTEGER NOT NULL DEFAULT 0,
+      next_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`)
+    this.db.run(`CREATE TABLE IF NOT EXISTS schedule_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      schedule_id INTEGER NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+      session_id TEXT,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      status TEXT NOT NULL,
+      error TEXT
+    )`)
+    this.db.run("CREATE INDEX IF NOT EXISTS schedule_runs_by_schedule ON schedule_runs (schedule_id, started_at DESC)")
+    this.db.run("PRAGMA foreign_keys = ON")
     this.migrateChats()
   }
 
@@ -158,6 +232,79 @@ export class Store {
     this.db.query("DELETE FROM mcp_servers WHERE name = ?").run(name)
   }
 
+  schedules(chatId?: number): Schedule[] {
+    const rows =
+      chatId === undefined
+        ? this.db.query<ScheduleRow, []>("SELECT * FROM schedules ORDER BY chat_id, id").all()
+        : this.db.query<ScheduleRow, [number]>("SELECT * FROM schedules WHERE chat_id = ? ORDER BY id").all(chatId)
+    return rows.map(toSchedule)
+  }
+
+  schedule(id: number): Schedule | undefined {
+    const row = this.db.query<ScheduleRow, [number]>("SELECT * FROM schedules WHERE id = ?").get(id)
+    return row ? toSchedule(row) : undefined
+  }
+
+  createSchedule(s: NewSchedule, now = Date.now()): Schedule {
+    const { id } = this.db
+      .query<{ id: number }, [number, string, string, string, string, string | null, string | null, number, number | null, number]>(
+        `INSERT INTO schedules (chat_id, name, kind, spec, prompt, model, agent, silent, next_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .get(s.chatId, s.name, s.kind, s.spec, s.prompt, s.model, s.agent, s.silent ? 1 : 0, s.nextAt, now)!
+    return this.schedule(id)!
+  }
+
+  updateSchedule(id: number, patch: SchedulePatch): Schedule | undefined {
+    const entries = Object.entries(patch).filter(([, v]) => v !== undefined) as [keyof SchedulePatch, unknown][]
+    if (entries.length) {
+      const sets = entries.map(([k]) => `${SCHEDULE_COLUMNS[k]} = ?`).join(", ")
+      const values = entries.map(([, v]) => (typeof v === "boolean" ? (v ? 1 : 0) : v)) as (string | number | null)[]
+      this.db.query(`UPDATE schedules SET ${sets} WHERE id = ?`).run(...values, id)
+    }
+    return this.schedule(id)
+  }
+
+  deleteSchedule(id: number): void {
+    this.db.query("DELETE FROM schedules WHERE id = ?").run(id)
+  }
+
+  addRun(scheduleId: number, status: RunStatus, startedAt: number, error: string | null = null): number {
+    const ended = status === "running" ? null : startedAt
+    return this.db
+      .query<{ id: number }, [number, number, number | null, string, string | null]>(
+        "INSERT INTO schedule_runs (schedule_id, started_at, ended_at, status, error) VALUES (?, ?, ?, ?, ?) RETURNING id",
+      )
+      .get(scheduleId, startedAt, ended, status, error)!.id
+  }
+
+  setRunSession(runId: number, sessionID: string): void {
+    this.db.query("UPDATE schedule_runs SET session_id = ? WHERE id = ?").run(sessionID, runId)
+  }
+
+  finishRun(runId: number, status: RunStatus, error: string | null = null, endedAt = Date.now()): void {
+    this.db.query("UPDATE schedule_runs SET status = ?, error = ?, ended_at = ? WHERE id = ?").run(status, error, endedAt, runId)
+  }
+
+  runs(scheduleId: number, limit = 20): ScheduleRun[] {
+    return this.db
+      .query<RunRow, [number, number]>("SELECT * FROM schedule_runs WHERE schedule_id = ? ORDER BY started_at DESC, id DESC LIMIT ?")
+      .all(scheduleId, limit)
+      .map(toRun)
+  }
+
+  runBySession(sessionID: string): ScheduleRun | undefined {
+    const row = this.db.query<RunRow, [string]>("SELECT * FROM schedule_runs WHERE session_id = ?").get(sessionID)
+    return row ? toRun(row) : undefined
+  }
+
+  /** Runs left "running" by a previous process that stopped mid-run. */
+  abandonRuns(now = Date.now()): void {
+    this.db
+      .query("UPDATE schedule_runs SET status = 'failed', error = 'The bot stopped during this run.', ended_at = ? WHERE status = 'running'")
+      .run(now)
+  }
+
   close(): void {
     this.db.close()
   }
@@ -172,5 +319,61 @@ function toState(row: Row): ChatState {
     sessionID: row.session_id,
     autoTitle: row.auto_title === 1,
     updatedAt: row.updated_at,
+  }
+}
+
+type ScheduleRow = {
+  id: number
+  chat_id: number
+  name: string
+  kind: ScheduleKind
+  spec: string
+  prompt: string
+  model: string | null
+  agent: string | null
+  silent: number
+  paused: number
+  fail_streak: number
+  next_at: number | null
+  created_at: number
+}
+
+function toSchedule(r: ScheduleRow): Schedule {
+  return {
+    id: r.id,
+    chatId: r.chat_id,
+    name: r.name,
+    kind: r.kind,
+    spec: r.spec,
+    prompt: r.prompt,
+    model: r.model,
+    agent: r.agent,
+    silent: r.silent === 1,
+    paused: r.paused === 1,
+    failStreak: r.fail_streak,
+    nextAt: r.next_at,
+    createdAt: r.created_at,
+  }
+}
+
+type RunRow = {
+  id: number
+  schedule_id: number
+  session_id: string | null
+  started_at: number
+  ended_at: number | null
+  status: RunStatus
+  error: string | null
+}
+
+function toRun(r: RunRow): ScheduleRun {
+  return {
+    id: r.id,
+    scheduleId: r.schedule_id,
+    sessionID: r.session_id,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    status: r.status,
+    error: r.error,
   }
 }

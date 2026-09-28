@@ -8,7 +8,7 @@ import { parseAction } from "./question"
 
 const PAGE_SIZE = 8
 
-export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => Chats): Bot {
+export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => Chats, extend?: (bot: Bot, chats: Chats) => void): Bot {
   const bot = new Bot(config.TELEGRAM_BOT_TOKEN)
   const chat = chats(bot)
 
@@ -31,6 +31,8 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
         "/model – switch model",
         "/agent – switch agent",
         "/status – session info",
+        "/schedule – run a prompt on a schedule",
+        "/schedules – list and manage scheduled prompts",
         "/whoami – show your Telegram user ID",
       ].join("\n"),
     ),
@@ -146,6 +148,8 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
     await bridge.switchAgent(view.sessionID, agent.id)
     await ctx.reply(`🤖 Agent set to <b>${escape(agent.name)}</b>`, { parse_mode: "HTML" })
   }
+
+  extend?.(bot, chat)
 
   bot.on("message:text", (ctx) => chat.handleText(ctx))
   bot.on("message:photo", (ctx) => chat.handlePhoto(ctx))

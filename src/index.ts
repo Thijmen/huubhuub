@@ -7,6 +7,9 @@ import { Chats } from "./chats"
 import { loadConfig } from "./config"
 import { Bridge } from "./opencode"
 import { Questions, trackForms } from "./question"
+import { scheduleCommands } from "./schedule-commands"
+import { ScheduleRunner } from "./schedule-runner"
+import { Scheduler } from "./scheduler"
 import { Settings } from "./settings"
 import { Store } from "./store"
 import { Transcriber } from "./transcribe"
@@ -30,11 +33,18 @@ const questions = new Questions(
 )
 bridge.subscribeAll((e) => trackForms(questions, e))
 
+const timeZone = () => config.SCHEDULE_TIMEZONE
 let chats!: Chats
+let scheduler!: Scheduler
 const bot = createBot(
   config,
   bridge,
-  (b) => (chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions)),
+  (b) => {
+    chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions)
+    scheduler = new Scheduler(store, new ScheduleRunner(b.api, bridge, chats, questions, timeZone), timeZone)
+    return chats
+  },
+  (b, c) => scheduleCommands({ bridge, store, scheduler, timeZone })(b, c),
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 
@@ -44,10 +54,15 @@ await bot.api.setMyCommands([
   { command: "model", description: "Switch model" },
   { command: "agent", description: "Switch agent" },
   { command: "status", description: "Session info" },
+  { command: "schedule", description: "Run a prompt on a schedule" },
+  { command: "schedules", description: "Manage scheduled prompts" },
   { command: "help", description: "Show help" },
 ])
 
-const admin = startAdmin({ config, bridge, store, settings, bot, chats, token: adminToken() })
+scheduler.start()
+console.log(`Scheduler running (${store.schedules().length} jobs, time zone ${config.SCHEDULE_TIMEZONE})`)
+
+const admin = startAdmin({ config, bridge, store, settings, bot, chats, scheduler, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
 
 function adminToken(): string {
@@ -67,6 +82,7 @@ async function shutdown(signal: string) {
   stopping = true
   console.log(`${signal} received, shutting down…`)
   admin.stop(true)
+  scheduler.stop()
   questions.dispose()
   await bot.stop().catch(() => {})
   await bridge.close().catch((err) => console.error("OpenCode close failed", err))
