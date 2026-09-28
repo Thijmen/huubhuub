@@ -189,7 +189,7 @@ function ProviderModal({ provider, onClose, onChange }: { provider: Provider; on
 
       {methods.length === 0 && !envMethod && (
         <div className="callout">
-          <p>This provider is defined in <code>opencode.jsonc</code> and is configured there.</p>
+          <p>This provider is defined in <code>bot.opencode.jsonc</code> and is configured there.</p>
         </div>
       )}
     </Modal>

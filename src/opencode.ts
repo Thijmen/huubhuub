@@ -200,5 +200,5 @@ export class Bridge {
 }
 
 export function configFile(): string {
-  return process.env.OPENCODE_BOT_CONFIG ?? join(import.meta.dir, "..", "opencode.jsonc")
+  return process.env.OPENCODE_BOT_CONFIG ?? join(import.meta.dir, "..", "bot.opencode.jsonc")
 }

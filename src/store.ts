@@ -18,7 +18,7 @@ export interface ChatState extends ChatKey {
 
 export interface McpRecord {
   name: string
-  /** `null` marks a server from opencode.jsonc that was removed in the admin UI. */
+  /** `null` marks a server from bot.opencode.jsonc that was removed in the admin UI. */
   config: Record<string, unknown> | null
 }
 

@@ -11,7 +11,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json bun.lock tsconfig.json opencode.jsonc ./
+COPY package.json bun.lock tsconfig.json bot.opencode.jsonc ./
 COPY src ./src
 
 ENV NODE_ENV=production \

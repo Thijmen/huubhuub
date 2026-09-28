@@ -38,7 +38,7 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/mcp-import.ts` | Parses pasted Claude Desktop / Cursor / OpenCode MCP configs |
 | `src/admin/server.ts` | Admin JSON API and static frontend (`Bun.serve`) |
 | `src/admin/web/` | Admin frontend (React, no build step) |
-| `opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
+| `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
 
 ## Setup
 
@@ -82,7 +82,7 @@ The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN
 
 - **Providers**: search all integrations OpenCode knows about. Paste an API key, run the OAuth/device-code sign-in, switch between or remove stored credentials, or set the provider's env var.
 - **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. Models appear straight away, without a restart.
-- **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `opencode.jsonc`.
+- **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `bot.opencode.jsonc`.
 - **Settings**: default model and agent, the Telegram allowlist, and thread mode. Values set here override the environment. "Reset" goes back to the env value.
 - **Conversations**: every thread, live. It streams replies, tool calls and reasoning, with per-turn tokens and cost. You can reply, stop a run, switch model or agent, or start a new topic from the portal. Portal messages are mirrored into Telegram with a 💻 tag, so the reply shows up in both places.
 
@@ -90,7 +90,7 @@ The admin UI can install credentials and run commands through MCP, so treat the 
 
 ## Notes
 
-- **Security**: `opencode.jsonc` lets the agent do anything without asking, because the container is the sandbox. It can run any shell command and reach any mounted path, so don't mount secrets you don't want it to use. Keep the allowlist tight.
+- **Security**: `bot.opencode.jsonc` lets the agent do anything without asking, because the container is the sandbox. It can run any shell command and reach any mounted path, so don't mount secrets you don't want it to use. Keep the allowlist tight.
 - **Models**: `/model` lists every enabled model from the configured providers. `DEFAULT_MODEL` (as `provider/model`, or set in the admin UI) applies to new sessions. If it isn't available at startup, the bot falls back to OpenCode's default.
 - **Attachments**: PDFs and other binary files aren't passed to the model by OpenCode V2. Convert them to images or text first.
 - **Transcribe cost**: the AWS free tier covers 60 min/month for the first 12 months. After that it's about $0.024/min.
