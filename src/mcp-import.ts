@@ -146,6 +146,6 @@ function isObject(v: unknown): v is Json {
   return typeof v === "object" && v !== null && !Array.isArray(v)
 }
 
-function stripJsonComments(text: string): string {
+export function stripJsonComments(text: string): string {
   return text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, str) => str ?? "").replace(/,(\s*[}\]])/g, "$1")
 }

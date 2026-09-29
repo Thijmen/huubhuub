@@ -5,12 +5,15 @@ import { startAdmin } from "./admin/server"
 import { createBot } from "./bot"
 import { Chats } from "./chats"
 import { loadConfig } from "./config"
+import { GitHubApp } from "./github-app"
 import { Bridge } from "./opencode"
 import { Questions, trackForms } from "./question"
 import { scheduleCommands } from "./schedule-commands"
 import { ScheduleRunner } from "./schedule-runner"
 import { Scheduler } from "./scheduler"
 import { Settings } from "./settings"
+import { skillCommands } from "./skill-commands"
+import { SkillSources } from "./skills"
 import { Store } from "./store"
 import { Transcriber } from "./transcribe"
 
@@ -21,8 +24,18 @@ const store = new Store(config.DATA_DIR)
 const settings = new Settings(config, store)
 settings.load()
 
+// Pull skill repos before OpenCode starts so the first sessions already see them. Alerts wait for the bot.
+const github = new GitHubApp(store)
+const skills = new SkillSources(store, config.DATA_DIR, () => config.SKILL_SYNC_INTERVAL_MINUTES, github)
+const bootAlerts: string[] = []
+skills.onAlert = (html) => bootAlerts.push(html)
+if (store.skillSources().length) {
+  console.log(`Syncing ${store.skillSources().length} skill source(s)…`)
+  await skills.sync()
+}
+
 console.log(`Starting OpenCode (workspace ${config.WORKSPACE_DIR})…`)
-const bridge = await Bridge.start(config, store)
+const bridge = await Bridge.start(config, store, [skills.enabledDir])
 
 const transcriber = Transcriber.enabled() ? new Transcriber(config) : undefined
 if (!transcriber) console.warn("No AWS credentials found; voice transcription is disabled.")
@@ -44,9 +57,19 @@ const bot = createBot(
     scheduler = new Scheduler(store, new ScheduleRunner(b.api, bridge, chats, questions, timeZone), timeZone)
     return chats
   },
-  (b, c) => scheduleCommands({ bridge, store, scheduler, timeZone })(b, c),
+  (b, c) => {
+    scheduleCommands({ bridge, store, scheduler, timeZone })(b, c)
+    skillCommands({ skills, timeZone })(b)
+  },
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
+
+skills.onAlert = (html) => {
+  for (const id of config.ALLOWED_USER_IDS) {
+    bot.api.sendMessage(id, html, { parse_mode: "HTML" }).catch((err) => console.error(`Couldn't send the skill sync alert to ${id}`, err))
+  }
+}
+for (const html of bootAlerts.splice(0)) skills.onAlert(html)
 
 await bot.api.setMyCommands([
   { command: "new", description: "Start a new conversation thread" },
@@ -56,13 +79,15 @@ await bot.api.setMyCommands([
   { command: "status", description: "Session info" },
   { command: "schedule", description: "Run a prompt on a schedule" },
   { command: "schedules", description: "Manage scheduled prompts" },
+  { command: "skills", description: "List loaded skills" },
   { command: "help", description: "Show help" },
 ])
 
 scheduler.start()
+skills.start()
 console.log(`Scheduler running (${store.schedules().length} jobs, time zone ${config.SCHEDULE_TIMEZONE})`)
 
-const admin = startAdmin({ config, bridge, store, settings, bot, chats, scheduler, token: adminToken() })
+const admin = startAdmin({ config, bridge, store, settings, bot, chats, scheduler, skills, github, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
 
 function adminToken(): string {
@@ -83,6 +108,7 @@ async function shutdown(signal: string) {
   console.log(`${signal} received, shutting down…`)
   admin.stop(true)
   scheduler.stop()
+  skills.stop()
   questions.dispose()
   await bot.stop().catch(() => {})
   await bridge.close().catch((err) => console.error("OpenCode close failed", err))

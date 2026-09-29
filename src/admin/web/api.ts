@@ -148,8 +148,47 @@ export interface EnvPlan {
   exists: boolean
 }
 
+export interface SkillInfo {
+  id: string
+  name: string
+  description: string | null
+  path: string
+  status: "enabled" | "disabled" | "error"
+  error: string | null
+}
+
+export interface SkillSource {
+  id: string
+  repo: string
+  ref: string | null
+  lastSyncAt: number | null
+  lastCommit: string | null
+  lastError: string | null
+  syncing: boolean
+  checkedOut: boolean
+  skills: SkillInfo[]
+}
+
+export interface GitHubAppInfo {
+  id: number
+  slug: string
+  name: string
+  owner: string
+  htmlUrl: string
+  installUrl: string
+  settingsUrl: string
+}
+
+export interface InstalledRepo {
+  repo: string
+  installationId: number
+  defaultBranch: string
+  private: boolean
+  added: boolean
+}
+
 export interface SettingInfo {
-  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE"
+  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE" | "SKILL_SYNC_INTERVAL_MINUTES"
   value: string
   source: "admin" | "env" | "default"
   envValue: string
