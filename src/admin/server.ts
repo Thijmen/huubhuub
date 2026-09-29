@@ -9,6 +9,8 @@ import type { Bridge, McpConfig } from "../opencode"
 import type { QuestionAction } from "../question"
 import { defaultName, describe, firstRun, parseWhen, SpecError, upcoming } from "../schedule-spec"
 import type { Scheduler } from "../scheduler"
+import type { GitHubApp } from "../github-app"
+import { SkillError, type SkillSources } from "../skills"
 import type { Schedule, SchedulePatch, Store } from "../store"
 import { conversation, eventStream } from "./chat"
 import index from "./web/index.html"
@@ -21,6 +23,8 @@ interface Deps {
   bot: Bot
   chats: Chats
   scheduler: Scheduler
+  skills: SkillSources
+  github: GitHubApp
   token: string
 }
 
@@ -45,7 +49,7 @@ export function startAdmin(deps: Deps) {
       const result = await handler(req, deps, server)
       return result instanceof Response ? result : json(result ?? { ok: true })
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : 500
+      const status = err instanceof HttpError ? err.status : err instanceof SkillError ? 400 : 500
       if (status === 500) console.error(`admin ${req.method} ${new URL(req.url).pathname} failed`, err)
       return json({ error: errorMessage(err) }, status)
     }
@@ -183,6 +187,64 @@ export function startAdmin(deps: Deps) {
       },
       "/api/mcp/:name/reconnect": {
         POST: api(async (req, d) => void (await d.bridge.host.mcp.connect({ ...d.bridge.location, server: param(req, "name") }))),
+      },
+
+      "/api/github/app": {
+        GET: api((_, d) => ({ connected: d.github.connected(), info: d.github.info() })),
+        DELETE: api((_, d) => void d.github.disconnect()),
+      },
+      "/api/github/app/start": {
+        POST: api(async (req, d) => {
+          const body = await read<{ origin: string; name?: string; org?: string }>(req)
+          return d.github.startManifest(body.origin ?? "", body.name, body.org)
+        }),
+      },
+      "/api/github/app/convert": {
+        POST: api(async (req, d) => {
+          const { code, state } = await read<{ code: string; state: string }>(req)
+          return d.github.convert(code ?? "", state ?? "")
+        }),
+      },
+      "/api/github/repos": {
+        GET: api(async (_, d) => {
+          const added = new Set(d.skills.list().map((s) => s.repo.toLowerCase()))
+          return (await d.github.repositories()).map((r) => ({ ...r, added: added.has(r.repo.toLowerCase()) }))
+        }),
+      },
+
+      "/api/skills": {
+        GET: api((_, d) => d.skills.list()),
+        POST: api(async (req, d) => {
+          const body = await read<{ repo: string; ref?: string }>(req)
+          return d.skills.add({ repo: body.repo ?? "", ref: body.ref })
+        }),
+      },
+      "/api/skills/sync": {
+        POST: api(async (_, d) => {
+          await d.skills.sync()
+          return d.skills.list()
+        }),
+      },
+      "/api/skills/:id": {
+        PATCH: api(async (req, d) => {
+          const { ref } = await read<{ ref?: string | null }>(req)
+          return d.skills.update(param(req, "id"), { ref })
+        }),
+        DELETE: api((req, d) => d.skills.remove(param(req, "id"))),
+      },
+      "/api/skills/:id/sync": {
+        POST: api(async (req, d) => {
+          const id = param(req, "id")
+          d.skills.get(id)
+          await d.skills.sync(id)
+          return d.skills.get(id)
+        }),
+      },
+      "/api/skills/:id/skills/:skill/enabled": {
+        PUT: api(async (req, d) => {
+          const { enabled } = await read<{ enabled: boolean }>(req)
+          return d.skills.setEnabled(param(req, "id"), param(req, "skill"), Boolean(enabled))
+        }),
       },
 
       "/api/settings": {

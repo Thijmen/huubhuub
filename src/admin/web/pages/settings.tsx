@@ -21,6 +21,7 @@ export function SettingsPage() {
           <StreamingSetting setting={get("TELEGRAM_STREAMING")!} onSaved={reload} />
           <QuestionTimeoutSetting setting={get("QUESTION_TIMEOUT_MINUTES")!} onSaved={reload} />
           <TimeZoneSetting setting={get("SCHEDULE_TIMEZONE")!} onSaved={reload} />
+          <SkillSyncSetting setting={get("SKILL_SYNC_INTERVAL_MINUTES")!} onSaved={reload} />
         </div>
       )}
     </>
@@ -232,6 +233,36 @@ function QuestionTimeoutSetting({ setting, onSaved }: { setting: SettingInfo; on
     <SettingCard
       title="Question timeout"
       description="How long the agent waits for an answer to one of its questions. After that the question is dismissed and the agent carries on."
+      setting={setting}
+      busy={busy}
+      onReset={() => save(null)}
+    >
+      <form
+        className="env-inline"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (valid) void save(draft.trim())
+        }}
+      >
+        <input className="input mono" inputMode="numeric" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <span className="muted small">minutes</span>
+        <Button busy={busy} disabled={!valid || draft.trim() === setting.value} type="submit">
+          Save
+        </Button>
+      </form>
+    </SettingCard>
+  )
+}
+
+function SkillSyncSetting({ setting, onSaved }: { setting: SettingInfo; onSaved: () => Promise<void> }) {
+  const { busy, save } = useSave("SKILL_SYNC_INTERVAL_MINUTES", onSaved)
+  const [draft, setDraft] = useState(setting.value)
+  useEffect(() => setDraft(setting.value), [setting.value])
+  const valid = /^\d+$/.test(draft.trim())
+  return (
+    <SettingCard
+      title="Skill sync interval"
+      description="How often the skill repos on the Skills page are pulled. 0 pulls only on startup and when you press Sync."
       setting={setting}
       busy={busy}
       onReset={() => save(null)}

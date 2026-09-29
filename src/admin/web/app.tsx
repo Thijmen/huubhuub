@@ -7,6 +7,7 @@ import { OverviewPage } from "./pages/overview"
 import { ProvidersPage } from "./pages/providers"
 import { SchedulesPage } from "./pages/schedules"
 import { SettingsPage } from "./pages/settings"
+import { SkillsPage } from "./pages/skills"
 import { ThreadsPage } from "./pages/threads"
 import { Button, ToastProvider } from "./ui"
 
@@ -15,6 +16,7 @@ const TABS = [
   { id: "providers", label: "Providers", icon: "⚡" },
   { id: "env", label: "Paste env", icon: "⌘" },
   { id: "mcp", label: "MCP servers", icon: "⬡" },
+  { id: "skills", label: "Skills", icon: "📚" },
   { id: "threads", label: "Conversations", icon: "✦" },
   { id: "schedules", label: "Schedules", icon: "⏰" },
   { id: "settings", label: "Settings", icon: "⚙" },
@@ -23,6 +25,8 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"]
 
 function currentTab(): Tab {
+  // Back from creating or installing the GitHub App; the Skills page finishes the flow.
+  if (new URLSearchParams(location.search).has("github")) return "skills"
   const id = location.hash.slice(1).split("/")[0]
   return (TABS.find((t) => t.id === id)?.id ?? "overview") as Tab
 }
@@ -108,6 +112,7 @@ function App() {
           {tab === "providers" && <ProvidersPage />}
           {tab === "env" && <EnvPage />}
           {tab === "mcp" && <McpPage />}
+          {tab === "skills" && <SkillsPage />}
           {tab === "threads" && <ThreadsPage selected={thread} open={openThread} />}
           {tab === "schedules" && <SchedulesPage openThread={(id) => (location.hash = `threads/${encodeURIComponent(id)}`)} />}
           {tab === "settings" && <SettingsPage />}

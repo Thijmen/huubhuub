@@ -34,6 +34,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
         "/status – session info",
         "/schedule – run a prompt on a schedule",
         "/schedules – list and manage scheduled prompts",
+        "/skills – list loaded skills and sync them",
         "/whoami – show your Telegram user ID",
       ].join("\n"),
     ),

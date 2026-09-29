@@ -22,6 +22,23 @@ export interface McpRecord {
   config: Record<string, unknown> | null
 }
 
+export interface SkillSource {
+  id: string
+  /** `owner/repo` on GitHub. */
+  repo: string
+  /** Branch or tag; `null` follows the default branch. */
+  ref: string | null
+  /** The GitHub App installation that grants access; looked up again if it goes away. */
+  installationId: number | null
+  lastSyncAt: number | null
+  lastCommit: string | null
+  lastError: string | null
+  failStreak: number
+  createdAt: number
+}
+
+export type SkillSourcePatch = Partial<Pick<SkillSource, "ref" | "installationId" | "lastSyncAt" | "lastCommit" | "lastError" | "failStreak">>
+
 export type ScheduleKind = "cron" | "interval" | "once"
 export type RunStatus = "running" | "ok" | "failed" | "silent" | "skipped" | "missed"
 
@@ -56,6 +73,15 @@ export interface ScheduleRun {
 
 export type NewSchedule = Pick<Schedule, "chatId" | "name" | "kind" | "spec" | "prompt" | "model" | "agent" | "silent" | "nextAt">
 export type SchedulePatch = Partial<Omit<Schedule, "id" | "chatId" | "createdAt">>
+
+const SKILL_SOURCE_COLUMNS: Record<keyof SkillSourcePatch, string> = {
+  ref: "ref",
+  installationId: "installation_id",
+  lastSyncAt: "last_sync_at",
+  lastCommit: "last_commit",
+  lastError: "last_error",
+  failStreak: "fail_streak",
+}
 
 const SCHEDULE_COLUMNS: Record<keyof SchedulePatch, string> = {
   name: "name",
@@ -113,8 +139,34 @@ export class Store {
       error TEXT
     )`)
     this.db.run("CREATE INDEX IF NOT EXISTS schedule_runs_by_schedule ON schedule_runs (schedule_id, started_at DESC)")
+    this.dropPatSkillSources()
+    this.db.run(`CREATE TABLE IF NOT EXISTS skill_sources (
+      id TEXT PRIMARY KEY,
+      repo TEXT NOT NULL,
+      ref TEXT,
+      installation_id INTEGER,
+      last_sync_at INTEGER,
+      last_commit TEXT,
+      last_error TEXT,
+      fail_streak INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`)
+    this.db.run(`CREATE TABLE IF NOT EXISTS skill_states (
+      source_id TEXT NOT NULL REFERENCES skill_sources(id) ON DELETE CASCADE,
+      skill_id TEXT NOT NULL,
+      enabled INTEGER NOT NULL,
+      PRIMARY KEY (source_id, skill_id)
+    )`)
     this.db.run("PRAGMA foreign_keys = ON")
     this.migrateChats()
+  }
+
+  /** A development build stored a token per skill source; sources now go through the GitHub App and must be added again. */
+  private dropPatSkillSources(): void {
+    const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(skill_sources)").all()
+    if (!columns.some((c) => c.name === "token")) return
+    this.db.run("DROP TABLE IF EXISTS skill_states")
+    this.db.run("DROP TABLE skill_sources")
   }
 
   /** Earlier versions keyed sessions by chat only. */
@@ -298,6 +350,50 @@ export class Store {
     return row ? toRun(row) : undefined
   }
 
+  skillSources(): SkillSource[] {
+    return this.db.query<SkillSourceRow, []>("SELECT * FROM skill_sources ORDER BY created_at, id").all().map(toSkillSource)
+  }
+
+  skillSource(id: string): SkillSource | undefined {
+    const row = this.db.query<SkillSourceRow, [string]>("SELECT * FROM skill_sources WHERE id = ?").get(id)
+    return row ? toSkillSource(row) : undefined
+  }
+
+  createSkillSource(s: Pick<SkillSource, "id" | "repo" | "ref" | "installationId">, now = Date.now()): SkillSource {
+    this.db
+      .query("INSERT INTO skill_sources (id, repo, ref, installation_id, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(s.id, s.repo, s.ref, s.installationId, now)
+    return this.skillSource(s.id)!
+  }
+
+  updateSkillSource(id: string, patch: SkillSourcePatch): SkillSource | undefined {
+    const entries = Object.entries(patch).filter(([, v]) => v !== undefined) as [keyof SkillSourcePatch, string | number | null][]
+    if (entries.length) {
+      const sets = entries.map(([k]) => `${SKILL_SOURCE_COLUMNS[k]} = ?`).join(", ")
+      this.db.query(`UPDATE skill_sources SET ${sets} WHERE id = ?`).run(...entries.map(([, v]) => v), id)
+    }
+    return this.skillSource(id)
+  }
+
+  deleteSkillSource(id: string): void {
+    this.db.query("DELETE FROM skill_sources WHERE id = ?").run(id)
+  }
+
+  /** Skills switched on or off in the admin UI, as `sourceId/skillId`. A skill without a row is enabled. */
+  skillStates(): Map<string, boolean> {
+    const rows = this.db.query<{ source_id: string; skill_id: string; enabled: number }, []>("SELECT * FROM skill_states").all()
+    return new Map(rows.map((r) => [`${r.source_id}/${r.skill_id}`, r.enabled === 1]))
+  }
+
+  setSkillEnabled(sourceId: string, skillId: string, enabled: boolean): void {
+    this.db
+      .query(
+        `INSERT INTO skill_states (source_id, skill_id, enabled) VALUES (?, ?, ?)
+         ON CONFLICT(source_id, skill_id) DO UPDATE SET enabled = excluded.enabled`,
+      )
+      .run(sourceId, skillId, enabled ? 1 : 0)
+  }
+
   /** Runs left "running" by a previous process that stopped mid-run. */
   abandonRuns(now = Date.now()): void {
     this.db
@@ -352,6 +448,32 @@ function toSchedule(r: ScheduleRow): Schedule {
     paused: r.paused === 1,
     failStreak: r.fail_streak,
     nextAt: r.next_at,
+    createdAt: r.created_at,
+  }
+}
+
+type SkillSourceRow = {
+  id: string
+  repo: string
+  ref: string | null
+  installation_id: number | null
+  last_sync_at: number | null
+  last_commit: string | null
+  last_error: string | null
+  fail_streak: number
+  created_at: number
+}
+
+function toSkillSource(r: SkillSourceRow): SkillSource {
+  return {
+    id: r.id,
+    repo: r.repo,
+    ref: r.ref,
+    installationId: r.installation_id,
+    lastSyncAt: r.last_sync_at,
+    lastCommit: r.last_commit,
+    lastError: r.last_error,
+    failStreak: r.fail_streak,
     createdAt: r.created_at,
   }
 }

@@ -2,6 +2,7 @@ import { OpenCode, type OpenCodeEvent } from "@opencode/sdk"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseModelRef, type Config } from "./config"
+import { stripJsonComments } from "./mcp-import"
 import type { ChatKey, Store } from "./store"
 
 export type Host = Awaited<ReturnType<typeof OpenCode.create>>
@@ -36,11 +37,12 @@ export class Bridge {
     private readonly store: Store,
   ) {}
 
-  static async start(config: Config, store: Store): Promise<Bridge> {
+  /** `skillDirs` are added to the config's `skills` paths; OpenCode watches them and reloads on change. */
+  static async start(config: Config, store: Store, skillDirs: string[] = []): Promise<Bridge> {
     const host = await OpenCode.create({
       app: { name: "telegram-bot" },
       database: { path: join(config.DATA_DIR, "opencode.sqlite") },
-      config: existsSync(configFile()) ? { content: readFileSync(configFile(), "utf8") } : undefined,
+      config: { content: configContent(skillDirs) },
       log: {
         level: config.OPENCODE_LOG_LEVEL,
         emit: (e) => console.error(`[opencode:${e.level}] ${e.message}`, e.attributes ?? "", e.cause ?? ""),
@@ -273,6 +275,11 @@ function sessionOf(event: OpenCodeEvent): string | undefined {
   const data = (event as { data?: { sessionID?: unknown; form?: { sessionID?: unknown } } }).data
   const id = data?.sessionID ?? data?.form?.sessionID
   return typeof id === "string" ? id : undefined
+}
+
+function configContent(skillDirs: string[]): string {
+  const doc = existsSync(configFile()) ? (JSON.parse(stripJsonComments(readFileSync(configFile(), "utf8"))) as { skills?: string[] }) : {}
+  return JSON.stringify({ ...doc, skills: [...(doc.skills ?? []), ...skillDirs] })
 }
 
 export function configFile(): string {
