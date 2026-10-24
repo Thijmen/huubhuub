@@ -210,6 +210,29 @@ export interface InstalledRepo {
   added: boolean
 }
 
+export interface GitHubInstallation {
+  id: number
+  account: string
+  accountType: "User" | "Organization"
+  permissions: Record<string, string>
+  repositorySelection: "all" | "selected"
+  htmlUrl: string
+  suspended: boolean
+  missing: string[]
+  isDefault: boolean
+}
+
+export interface GitHubStatus {
+  connected: boolean
+  info: GitHubAppInfo | null
+  /** `gh --version`, or null when it isn't installed. */
+  gh: string | null
+  installations: GitHubInstallation[]
+  missingAppPermissions: string[]
+  identity: { name: string; email: string } | null
+  error: string | null
+}
+
 export interface SettingInfo {
   key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE" | "SKILL_SYNC_INTERVAL_MINUTES"
   value: string
@@ -233,21 +256,27 @@ export interface ScheduleRun {
   endedAt: number | null
   status: RunStatus
   error: string | null
+  output: string | null
 }
+
+export type TaskType = "prompt" | "command"
 
 export interface ScheduleInfo {
   id: number
-  chatId: number
+  chatId: number | null
   name: string
   kind: "cron" | "interval" | "once"
   spec: string
+  type: TaskType
   prompt: string
+  command: string | null
   model: string | null
   agent: string | null
   silent: boolean
   paused: boolean
   failStreak: number
   nextAt: number | null
+  createdBy: "user" | "agent"
   createdAt: number
   description: string
   running: boolean

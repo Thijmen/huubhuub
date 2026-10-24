@@ -1,11 +1,8 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { api, enc, type GitHubAppInfo, type InstalledRepo, type SkillSource } from "../api"
 import { Badge, Button, Confirm, Empty, ErrorBanner, Field, Modal, PageHeader, Skeleton, Toggle, relTime, useAction, useApi } from "../ui"
 
 type AppState = { connected: boolean; info: GitHubAppInfo | null }
-
-/** The GitHub redirect is handled once, even if React runs the effect twice. */
-let returnHandled = false
 
 export function SkillsPage() {
   const { data, error, reload } = useApi<SkillSource[]>("/api/skills", 5000)
@@ -13,19 +10,6 @@ export function SkillsPage() {
   const [dialog, setDialog] = useState<"add" | { edit: SkillSource }>()
   const { busy, run } = useAction()
   const connected = app.data?.connected ?? false
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    const step = params.get("github")
-    if (!step || returnHandled) return
-    returnHandled = true
-    history.replaceState(null, "", `${location.pathname}#skills`)
-    if (step === "created") {
-      void run("convert", () => api("POST", "/api/github/app/convert", { code: params.get("code"), state: params.get("state") }).then(app.reload), "GitHub App created. Now install it on your skill repos.")
-    } else {
-      void app.reload()
-    }
-  }, [])
 
   return (
     <>
@@ -46,14 +30,21 @@ export function SkillsPage() {
         }
       />
       <ErrorBanner error={error ?? app.error} onRetry={reload} />
-      {app.data && <GitHubCard state={app.data} converting={busy === "convert"} onChange={app.reload} />}
+      {app.data && !connected && (
+        <div className="callout callout-warn gh-skills-hint">
+          <span>Skill repos are pulled through the GitHub App. Connect it on the GitHub page first.</span>
+          <Button size="sm" onClick={() => (location.hash = "github")}>
+            Go to GitHub →
+          </Button>
+        </div>
+      )}
       {!data ? (
         <Skeleton rows={3} />
       ) : data.length === 0 ? (
         <Empty icon="📚" title="No skill repos yet">
           {connected
             ? "Add a repo the GitHub App is installed on. Every SKILL.md in it becomes a skill the agent can load."
-            : "Connect a GitHub App first, then add the repos it's installed on."}
+            : "Connect the GitHub App first, then add the repos it's installed on."}
         </Empty>
       ) : (
         <div className="mcp-list">
@@ -142,98 +133,6 @@ export function SkillsPage() {
       )}
       {dialog && <SourceDialog source={typeof dialog === "object" ? dialog.edit : undefined} onClose={() => setDialog(undefined)} onDone={reload} />}
     </>
-  )
-}
-
-function GitHubCard({ state, converting, onChange }: { state: AppState; converting: boolean; onChange: () => Promise<void> }) {
-  const [name, setName] = useState("")
-  const [org, setOrg] = useState("")
-  const { busy, run } = useAction()
-  const info = state.info
-
-  const create = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const res = await run("create", () =>
-      api<{ action: string; manifest: object }>("POST", "/api/github/app/start", { origin: location.origin, name: name.trim() || undefined, org: org.trim() || undefined }),
-    )
-    if (!res) return
-    // GitHub takes the manifest as a form post and sends the browser back with a code.
-    const form = document.createElement("form")
-    form.method = "post"
-    form.action = res.action
-    const input = document.createElement("input")
-    input.type = "hidden"
-    input.name = "manifest"
-    input.value = JSON.stringify(res.manifest)
-    form.append(input)
-    document.body.append(form)
-    form.submit()
-  }
-
-  if (converting) {
-    return (
-      <article className="card gh-app">
-        <span className="spinner" /> Finishing the GitHub App setup…
-      </article>
-    )
-  }
-
-  if (!info) {
-    return (
-      <article className="card gh-app">
-        <div className="gh-app-head">
-          <div>
-            <div className="mcp-name">Connect GitHub</div>
-            <div className="muted small">
-              Creates a private GitHub App with read-only access to repository contents. You'll confirm it on GitHub, then pick which repos it can read.
-            </div>
-          </div>
-        </div>
-        <form className="gh-app-form" onSubmit={create}>
-          <Field label="App name" hint="Optional. Must be unique on GitHub.">
-            <input className="input mono" placeholder="huub-skills-…" maxLength={34} value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Organization" hint="Optional. Empty creates it on your personal account.">
-            <input className="input mono" placeholder="my-org" value={org} onChange={(e) => setOrg(e.target.value)} />
-          </Field>
-          <div className="row-end">
-            <Button variant="primary" type="submit" busy={busy === "create"}>
-              Create GitHub App ↗
-            </Button>
-          </div>
-        </form>
-      </article>
-    )
-  }
-
-  return (
-    <article className="card gh-app">
-      <div className="gh-app-head">
-        <div>
-          <div className="mcp-name">
-            GitHub App <span className="mono">{info.name}</span>
-          </div>
-          <div className="muted small">
-            Owned by {info.owner}. Read-only access to the repos you install it on.
-          </div>
-        </div>
-        <div className="mcp-actions">
-          <a className="btn btn-default btn-sm" href={info.installUrl} target="_blank" rel="noreferrer">
-            Install on repos ↗
-          </a>
-          <a className="btn btn-sm btn-ghost" href={info.settingsUrl} target="_blank" rel="noreferrer">
-            App settings ↗
-          </a>
-          <Confirm text="Disconnect the app? Repos stop syncing until you connect one again." onConfirm={() => run("disconnect", () => api("DELETE", "/api/github/app").then(onChange), "Disconnected. The app still exists on GitHub; delete it from its settings if you like.")}>
-            {(ask) => (
-              <Button size="sm" variant="ghost" busy={busy === "disconnect"} onClick={ask}>
-                Disconnect
-              </Button>
-            )}
-          </Confirm>
-        </div>
-      </div>
-    </article>
   )
 }
 
