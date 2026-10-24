@@ -94,6 +94,18 @@ export function personaCommands(deps: { store: Store; personas: Personas }) {
       await refresh(ctx, memoryView(ctx.from.id))
     })
 
+    // The Forget button under an automatic "🧠 Remembered" notice.
+    bot.callbackQuery(/^mx:(\d+)$/, async (ctx) => {
+      const m = store.memory(Number(ctx.match[1]))
+      if (!m || m.userId !== ctx.from.id) {
+        await ctx.editMessageReplyMarkup().catch(() => {})
+        return void (await ctx.answerCallbackQuery({ text: "Already forgotten." }))
+      }
+      store.deleteMemory(m.id)
+      await ctx.editMessageText(`🗑 <i>Forgotten:</i> <s>${escape(truncate(m.text, 400))}</s>`, { parse_mode: "HTML" }).catch(() => {})
+      await ctx.answerCallbackQuery({ text: "Forgotten" })
+    })
+
     bot.command("forget", async (ctx) => {
       if (!ctx.from) return
       const arg = ctx.match.trim().replace(/^#/, "")

@@ -107,12 +107,12 @@ describe("Personas", () => {
     expect(() => personas.agentMemory("save", "ses_me", { text: "x" })).toThrow(MemoryError)
   })
 
-  test("automatic memory keeps a high bar and says when it saves", () => {
+  test("automatic memory leaves saving lasting facts to the review step", () => {
     store.set({ chatId: ME, threadId: 0 }, "ses_me")
     personas.setDefaultMemoryMode("auto")
     const system = personas.context("ses_me", NOW).system!
-    expect(system).toContain("Keep the bar high")
-    expect(system).toContain("say so in one short line")
+    expect(system).toContain("saved automatically after each reply")
+    expect(system).toContain("explicitly asks you to remember, correct or forget")
   })
 
   test("the agent's memory tools only touch the session user's memories", () => {

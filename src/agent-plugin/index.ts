@@ -66,7 +66,7 @@ const MEMORY_TOOLS = [
   {
     name: "memory_save",
     description:
-      "Save something about the user to long-term memory, so it's known in future conversations. Follow the memory rules in the system prompt about when to use this; when in doubt, don't.",
+      "Save something about the user to long-term memory, so it's known in future conversations. Follow the memory rules in the system prompt about when to use this.",
     input: { type: "object", properties: { text: memoryText }, required: ["text"], additionalProperties: false },
   },
   {

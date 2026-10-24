@@ -207,10 +207,8 @@ const MEMORY_RULES: Record<Exclude<MemoryMode, "off">, (name: string) => string>
     `Only save a memory when ${name} explicitly asks you to remember something ("remember that…", "onthoud dat…"). Don't save anything on your own initiative, and don't offer to.`,
   auto: (name) =>
     [
-      `Save a memory when ${name} asks you to, or when they tell you something that will clearly still matter weeks from now: lasting preferences, important people in their life, recurring commitments, long-running projects.`,
-      "Keep the bar high. Don't save small talk, one-off requests, details of the task at hand, or anything you could easily ask again. Save at most one memory per conversation unless asked.",
-      "Never save passwords, tokens, or health, financial or other sensitive details unless explicitly asked.",
-      "When you save something on your own initiative, say so in one short line at the end of your reply, so they can tell you to forget it.",
+      `Lasting facts about ${name} are saved automatically after each reply, and ${name} is told when that happens, so you don't need to save those yourself.`,
+      `Use the memory tools when ${name} explicitly asks you to remember, correct or forget something.`,
     ].join(" "),
 }
 

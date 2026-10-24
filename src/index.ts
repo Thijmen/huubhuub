@@ -11,6 +11,7 @@ import { GitHubAccess } from "./github-access"
 import { GitHubApp } from "./github-app"
 import { InternalApi } from "./internal"
 import { Bridge } from "./opencode"
+import { MemoryReview } from "./memory-review"
 import { Personas } from "./personas"
 import { Questions, trackForms } from "./question"
 import { scheduleCommands } from "./schedule-commands"
@@ -101,6 +102,9 @@ bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 const schedules = new ScheduleService(store, scheduler, bridge, timeZone)
 internal.attach({ github: githubAccess, schedules: new AgentSchedules(store, schedules, scheduler, bridge, timeZone), personas })
 
+const memoryReview = new MemoryReview({ bridge, store, personas, api: bot.api })
+memoryReview.start()
+
 skills.onAlert = (html) => {
   for (const id of config.ALLOWED_USER_IDS) {
     bot.api.sendMessage(id, html, { parse_mode: "HTML" }).catch((err) => console.error(`Couldn't send the skill sync alert to ${id}`, err))
@@ -148,6 +152,7 @@ async function shutdown(signal: string) {
   admin.stop(true)
   internal.stop()
   scheduler.stop()
+  memoryReview.stop()
   skills.stop()
   questions.dispose()
   await bot.stop().catch(() => {})

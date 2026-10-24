@@ -152,10 +152,11 @@ Memory has three modes, per user (`/memory`, or the People page), with a default
 | --- | --- |
 | **Off** | Remembers nothing between conversations. |
 | **When asked** (default) | Only saves something when told to ("remember that…", "onthoud dat…"). It never saves or offers to on its own. |
-| **Automatic** | Also saves the occasional fact that will clearly still matter weeks from now, at most one per conversation, never small talk or sensitive details, and says so in the reply. |
+| **Automatic** | Also saves personal facts the user shares on their own, like people in their life, pets, work, hobbies or favourite teams. After each reply, a separate call to the conversation's model reviews the exchange; anything it saves is posted in the thread as "🧠 Remembered: …" with a **Forget** button. |
 
 - All of a user's memories go into the system prompt; there's no separate lookup step. The agent is told to use them only when relevant.
-- The agent changes them with its `memory_save`, `memory_update` and `memory_forget` tools, which only reach the current user's memories.
+- The agent changes them with its `memory_save`, `memory_update` and `memory_forget` tools, which only reach the current user's memories. In Automatic mode it only uses them when asked to remember, correct or forget something; the review step handles the rest, so saving doesn't depend on the chat model noticing.
+- The review costs one extra, small model call per reply, and only runs for users in Automatic mode. It skips scheduled runs and never saves secrets or health and financial details.
 - `/memory` lists them and switches the mode; `/forget 12` deletes one; "Forget everything" wipes them. The People page shows who saved what, lets you edit, add and delete memories, and previews the full system prompt a user gets.
 - The People page also lists each person's conversations. Open one to see every tool call in it, newest first, with a count per tool and how many failed; expand a call for its input and output. Code Mode `execute` calls show the tools their script called, e.g. `execute → memory_save`. In groups, a conversation is listed under whoever wrote in it last.
 - A memory is one sentence of at most 500 characters, and a user can have up to 100.
