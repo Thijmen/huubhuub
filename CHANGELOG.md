@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.0.12
+
+### Patch Changes
+
+- [#26](https://github.com/Thijmen/huubhuub/pull/26) [`7200134`](https://github.com/Thijmen/huubhuub/commit/72001349a5b1724a5b797a86c937a51821033669) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix the agent's gh commands failing on repos of an organization the GitHub App is installed on, like `gh repo clone org/repo` run outside a checkout. gh now gets a token for the account the command names.
+
 ## 0.0.11
 
 ### Patch Changes
