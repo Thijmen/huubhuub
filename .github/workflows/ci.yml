@@ -3,10 +3,10 @@
 #   1. while entries are pending, the release job opens or updates a "Version Packages" PR that
 #      bumps package.json, writes CHANGELOG.md and removes the entries,
 #   2. once that PR is merged, it tags the commit vX.Y.Z and publishes a GitHub release with the
-#      changelog entry; then the image job builds ghcr.io/thijmen/huub-v2 for amd64 and arm64
+#      changelog entry; then the image job builds ghcr.io/thijmen/huubhuub for amd64 and arm64
 #      (the k3s cluster is arm64) and pushes it as X.Y.Z, sha-<short> and latest,
 #   3. update_infra opens a PR on the GitOps repo bumping k8s/services/huub/app/values.yaml
-#      (image.tag), which Argo CD deploys once merged.
+#      (image.repository and image.tag), which Argo CD deploys once merged.
 # Merges that don't release (pending entries, or none at all) build and deploy nothing.
 #
 # The release job needs "Allow GitHub Actions to create and approve pull requests" enabled in
@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE: ghcr.io/thijmen/huub-v2
+  IMAGE: ghcr.io/thijmen/huubhuub
 
 jobs:
   test:
@@ -122,14 +122,17 @@ jobs:
         with:
           repository: ${{ vars.GITOPS_REPO }}
           token: ${{ secrets.INFRA_ARGOCD_PAT }}
-      - name: Bump image tag
+      - name: Bump image
         env:
           VERSION: ${{ needs.image.outputs.version }}
+        # Sets the repository as well as the tag, so renaming IMAGE carries over to the cluster.
         run: |
           VALUES=k8s/services/huub/app/values.yaml
           sed -i '/^image:/,/^[a-z]/ {
+            s#^\(  repository: \).*#\1'"${IMAGE}"'#
             s/^\(  tag: \).*/\1'"${VERSION}"'/
           }' "$VALUES"
+          grep -q "repository: ${IMAGE}$" "$VALUES" || { echo "::error::image.repository not updated"; exit 1; }
           grep -q "tag: ${VERSION}" "$VALUES" || { echo "::error::image.tag not updated"; exit 1; }
           git diff -- "$VALUES"
       - uses: peter-evans/create-pull-request@v7
@@ -138,7 +141,7 @@ jobs:
           commit-message: "chore(huub): update image to ${{ needs.image.outputs.version }}"
           title: "chore(huub): update image to ${{ needs.image.outputs.version }}"
           body: |
-            Automated PR to update the huub image tag.
+            Automated PR to update the huub image.
 
             **Image:** `${{ env.IMAGE }}:${{ needs.image.outputs.version }}`
             **Commit:** ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
