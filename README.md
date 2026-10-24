@@ -72,6 +72,7 @@ docker compose logs -f
 
 `./workspace` is mounted as the agent's working directory. Put repositories there, or let the agent clone them. Session state lives in the `bot-data` volume and survives restarts. Port `4196` serves the OpenCode web UI and is bound to `127.0.0.1`, like the admin UI.
 
+CI (`.github/workflows/ci.yml`) runs the typecheck and tests on every pull request and checks that the image builds. Every merge to `main` publishes `ghcr.io/thijmen/huub-v2:latest` (plus a `sha-…` tag) for `linux/amd64`. To run that instead of building locally, set `image: ghcr.io/thijmen/huub-v2:latest` in `docker-compose.yml`, remove `build: .`, and `docker login ghcr.io` (the package is private).
 
 ### Local
 
