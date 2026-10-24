@@ -102,7 +102,7 @@ bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 const schedules = new ScheduleService(store, scheduler, bridge, timeZone)
 internal.attach({ github: githubAccess, schedules: new AgentSchedules(store, schedules, scheduler, bridge, timeZone), personas })
 
-const memoryReview = new MemoryReview({ bridge, store, personas, api: bot.api })
+const memoryReview = new MemoryReview({ bridge, store, personas, api: bot.api, memoryModel: () => config.MEMORY_MODEL })
 memoryReview.start()
 
 skills.onAlert = (html) => {

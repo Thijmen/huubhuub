@@ -16,6 +16,14 @@ export function SettingsPage() {
         <div className="settings">
           <ModelSetting setting={get("DEFAULT_MODEL")!} models={data.models} onSaved={reload} />
           <AgentSetting setting={get("DEFAULT_AGENT")!} agents={data.agents} onSaved={reload} />
+          <ModelSetting
+            setting={get("MEMORY_MODEL")!}
+            models={data.models}
+            onSaved={reload}
+            title="Memory model"
+            description="Reviews each reply for things to remember, for people with automatic memory. A small, fast model is plenty."
+            empty="The conversation's own model"
+          />
           <UsersSetting setting={get("ALLOWED_USER_IDS")!} onSaved={reload} />
           <ThreadSetting setting={get("THREAD_MODE")!} onSaved={reload} />
           <StreamingSetting setting={get("TELEGRAM_STREAMING")!} onSaved={reload} />
@@ -59,8 +67,22 @@ function SettingCard({ title, description, setting, onReset, busy, children }: {
   )
 }
 
-function ModelSetting({ setting, models, onSaved }: { setting: SettingInfo; models: SettingsResponse["models"]; onSaved: () => Promise<void> }) {
-  const { busy, save } = useSave("DEFAULT_MODEL", onSaved)
+function ModelSetting({
+  setting,
+  models,
+  onSaved,
+  title = "Default model",
+  description = "Used for new conversations. Anyone can still switch with /model.",
+  empty = "OpenCode picks automatically",
+}: {
+  setting: SettingInfo
+  models: SettingsResponse["models"]
+  onSaved: () => Promise<void>
+  title?: string
+  description?: string
+  empty?: string
+}) {
+  const { busy, save } = useSave(setting.key, onSaved)
   const [query, setQuery] = useState("")
   const [open, setOpen] = useState(false)
   const filtered = useMemo(() => {
@@ -70,7 +92,7 @@ function ModelSetting({ setting, models, onSaved }: { setting: SettingInfo; mode
   const current = models.find((m) => m.ref === setting.value)
 
   return (
-    <SettingCard title="Default model" description="Used for new conversations. Anyone can still switch with /model." setting={setting} busy={busy} onReset={() => save(null)}>
+    <SettingCard title={title} description={description} setting={setting} busy={busy} onReset={() => save(null)}>
       <div className="combo">
         <button className="input combo-trigger" onClick={() => setOpen((o) => !o)}>
           {setting.value ? (
@@ -79,7 +101,7 @@ function ModelSetting({ setting, models, onSaved }: { setting: SettingInfo; mode
               <span className="mono muted small">{setting.value}</span>
             </>
           ) : (
-            <span className="muted">OpenCode picks automatically</span>
+            <span className="muted">{empty}</span>
           )}
           <span className="chev">▾</span>
         </button>
