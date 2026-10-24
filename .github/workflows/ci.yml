@@ -1,3 +1,13 @@
+# Tests on every pull request and push to main. A push to main also:
+#   1. tags the commit vX.Y.Z (next patch version after the last v* tag),
+#   2. builds ghcr.io/thijmen/huub-v2 for amd64 and arm64 (the k3s cluster is arm64) and
+#      pushes it as X.Y.Z, sha-<short> and latest,
+#   3. opens a PR on the GitOps repo bumping k8s/services/huub/app/values.yaml (image.tag),
+#      which Argo CD deploys once merged.
+#
+# Step 3 needs the repository variable GITOPS_REPO (owner/name, e.g. Thijmen/infra-argocd) and
+# the secret INFRA_ARGOCD_PAT (contents + pull-requests write on that repo); it is skipped
+# without either. GITHUB_TOKEN covers the GHCR push and the tag.
 name: CI
 
 on:
@@ -9,6 +19,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/thijmen/huub-v2
 
 jobs:
   test:
@@ -28,10 +41,28 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # the vX.Y.Z tag
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      has_infra_pat: ${{ steps.pat.outputs.present }}
     steps:
+      - name: Check for the GitOps token
+        id: pat
+        env:
+          PAT: ${{ secrets.INFRA_ARGOCD_PAT }}
+        run: echo "present=$([ -n "$PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate version
+        id: version
+        uses: paulhatch/semantic-version@v6.0.4
+        with:
+          tag_prefix: "v"
+          version_format: "${major}.${minor}.${patch}"
+      # arm64 is built under QEMU so bun installs the arm64 opencode binary.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -41,16 +72,57 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.IMAGE }}
           tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
             type=sha
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Tag commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+          echo "::notice::${IMAGE}:${VERSION}"
+
+  update_infra:
+    needs: image
+    if: needs.image.outputs.has_infra_pat == 'true' && vars.GITOPS_REPO != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.GITOPS_REPO }}
+          token: ${{ secrets.INFRA_ARGOCD_PAT }}
+      - name: Bump image tag
+        env:
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          VALUES=k8s/services/huub/app/values.yaml
+          sed -i '/^image:/,/^[a-z]/ {
+            s/^\(  tag: \).*/\1'"${VERSION}"'/
+          }' "$VALUES"
+          grep -q "tag: ${VERSION}" "$VALUES" || { echo "::error::image.tag not updated"; exit 1; }
+          git diff -- "$VALUES"
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.INFRA_ARGOCD_PAT }}
+          commit-message: "chore(huub): update image to ${{ needs.image.outputs.version }}"
+          title: "chore(huub): update image to ${{ needs.image.outputs.version }}"
+          body: |
+            Automated PR to update the huub image tag.
+
+            **Image:** `${{ env.IMAGE }}:${{ needs.image.outputs.version }}`
+            **Commit:** ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            **Source:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: update-huub-${{ needs.image.outputs.version }}
+          base: main
