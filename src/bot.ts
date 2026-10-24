@@ -25,7 +25,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
   bot.command(["start", "help"], (ctx) =>
     ctx.reply(
       [
-        "👋 I'm an OpenCode agent. Send text, images, files or voice notes.",
+        "👋 This is HuubHuub. Send text, images, files or voice notes.",
         "",
         "/new – start a new conversation (a new thread when topics are on)",
         "/stop – interrupt the current run",

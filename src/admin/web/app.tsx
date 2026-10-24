@@ -87,7 +87,7 @@ function App() {
             <span />
           </div>
           <div>
-            <div className="brand-name">opencode</div>
+            <div className="brand-name">HuubHuub</div>
             <div className="brand-sub">telegram control room</div>
           </div>
         </div>
@@ -170,7 +170,7 @@ function Login({ onDone }: { onDone: () => void }) {
         <div className="brand-mark lg">
           <span />
         </div>
-        <h1>Control room</h1>
+        <h1>HuubHuub</h1>
         <p className="muted">Enter the admin token. It's the ADMIN_TOKEN env var, or the one printed in the bot's startup log.</p>
         <input
           autoFocus
