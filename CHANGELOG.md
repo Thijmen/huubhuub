@@ -1,5 +1,13 @@
 # huubhuub
 
+## 0.0.10
+
+### Patch Changes
+
+- [#22](https://github.com/Thijmen/huubhuub/pull/22) [`afc42a5`](https://github.com/Thijmen/huubhuub/commit/afc42a56552f7bba8438fc47682f32bc846dee82) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix the model pickers on the admin Settings page opening behind the settings below them, so no model could be picked.
+
+- [#18](https://github.com/Thijmen/huubhuub/pull/18) [`0b20f45`](https://github.com/Thijmen/huubhuub/commit/0b20f45bacd4977e0164e54f10f44197dfeed9c6) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix the "✻ Pondering…" status sometimes staying on screen after the reply arrived in private chats.
+
 ## 0.0.9
 
 ### Patch Changes
