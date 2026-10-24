@@ -4,17 +4,17 @@ import type { Bridge, SessionEvent, TranscriptBlock } from "./opencode"
 import { Questions } from "./question"
 import { ChatView } from "./stream"
 
-type Call = { method: string; text?: string; draftID?: number }
+type Call = { method: string; text?: string; draftID?: number; at: number }
 
 function fakeApi(opts: { draftsFail?: boolean } = {}) {
   const calls: Call[] = []
   let nextID = 100
   const api = {
-    sendMessage: async (_chat: number, text: string) => (calls.push({ method: "sendMessage", text }), { message_id: nextID++ }),
-    editMessageText: async (_chat: number, _id: number, text: string) => (calls.push({ method: "editMessageText", text }), true),
+    sendMessage: async (_chat: number, text: string) => (calls.push({ method: "sendMessage", text, at: Date.now() }), { message_id: nextID++ }),
+    editMessageText: async (_chat: number, _id: number, text: string) => (calls.push({ method: "editMessageText", text, at: Date.now() }), true),
     sendMessageDraft: async (_chat: number, draftID: number, text: string) => {
       if (opts.draftsFail) throw new Error("Bad Request: method not available")
-      calls.push({ method: "sendMessageDraft", text, draftID })
+      calls.push({ method: "sendMessageDraft", text, draftID, at: Date.now() })
       return true
     },
     sendChatAction: async () => true,
@@ -55,6 +55,8 @@ afterEach(() => {
 })
 
 const settle = (ms = 20) => Bun.sleep(ms)
+/** Long enough for a final message held back behind a fresh draft. */
+const FINAL_MS = 1100
 const sent = (calls: Call[]) => calls.filter((c) => c.method === "sendMessage").map((c) => c.text)
 
 describe("ChatView", () => {
@@ -85,7 +87,7 @@ describe("ChatView", () => {
     await settle(600)
     expect(calls.at(-1)!.text).toMatch(/^Nieuws\n\n✻ .+… \ds$/)
     emit("session.execution.succeeded")
-    await settle()
+    await settle(FINAL_MS)
     expect(sent(calls)).toEqual(["Nieuws"])
   })
 
@@ -118,7 +120,7 @@ describe("ChatView", () => {
     emit("session.text.delta", { assistantMessageID: "m", ordinal: 0, delta: "lo" })
     await settle(600)
     emit("session.execution.succeeded")
-    await settle()
+    await settle(FINAL_MS)
     const drafts = calls.filter((c) => c.method === "sendMessageDraft")
     expect(drafts.some((d) => d.text!.startsWith("Hel\n\n✻ "))).toBe(true)
     expect(drafts.at(-1)!.text).toStartWith("Hello\n\n✻ ")
@@ -165,5 +167,32 @@ describe("ChatView", () => {
     emit("session.execution.interrupted", { reason: "user" })
     await settle()
     expect(sent(calls)).toEqual(["Partial\n\n⏹ Stopped"])
+  })
+
+  test("holds the final message back until the last draft has landed", async () => {
+    const { emit, calls } = setup({ stored: [] })
+    emit("session.execution.started")
+    await settle(600)
+    const draft = calls.at(-1)!
+    expect(draft).toMatchObject({ method: "sendMessageDraft" })
+    expect(draft.text).toMatch(/^✻ .+… 0s$/)
+    emit("session.text.delta", { assistantMessageID: "m", ordinal: 0, delta: "Ik ben Flint." })
+    emit("session.execution.succeeded")
+    await settle(100)
+    expect(sent(calls)).toEqual([])
+    await settle(FINAL_MS)
+    const final = calls.find((c) => c.method === "sendMessage")!
+    expect(final.text).toBe("Ik ben Flint.")
+    expect(final.at - draft.at).toBeGreaterThanOrEqual(990)
+    expect(calls.filter((c) => c.method === "sendMessageDraft").length).toBe(1)
+  })
+
+  test("sends the final message right away when no draft was shown", async () => {
+    const { emit, calls } = setup({ stored: [] })
+    emit("session.execution.started")
+    emit("session.text.delta", { assistantMessageID: "m", ordinal: 0, delta: "Snel" })
+    emit("session.execution.succeeded")
+    await settle()
+    expect(sent(calls)).toEqual(["Snel"])
   })
 })

@@ -6,6 +6,11 @@ const NO_PREVIEW = { is_disabled: true } as const
 /** Drafts vanish after 30s without an update; refresh them well before that. */
 const DRAFT_KEEPALIVE_MS = 20_000
 const FINALIZE_RETRY_MS = 2_000
+/**
+ * Minimum gap between the last draft update and the final message. Telegram can apply a draft that was
+ * sent just before the final message after it, which leaves a stale draft ("✻ Pondering… 1s") on screen.
+ */
+const DRAFT_SETTLE_MS = 1_000
 
 export type StreamingMode = "draft" | "edit"
 
@@ -25,6 +30,8 @@ export class Reply {
   private live = false
   private lastDraft: string | undefined
   private keepAlive: ReturnType<typeof setTimeout> | undefined
+  /** When the last draft update was accepted by Telegram. */
+  private lastDraftAt = 0
 
   constructor(
     private readonly api: Api,
@@ -67,6 +74,7 @@ export class Reply {
   finalize(markdown: string): Promise<void> {
     this.clearDraft()
     return this.enqueue(async () => {
+      await this.settleDraft()
       try {
         await this.sync(markdown)
       } catch (err) {
@@ -102,6 +110,12 @@ export class Reply {
     this.clearDraft()
   }
 
+  /** Drop the draft without sending anything; resolves once a message may safely follow it. */
+  discard(): Promise<void> {
+    this.dispose()
+    return this.enqueue(() => this.settleDraft(), "draft discard failed")
+  }
+
   private enqueue(fn: () => Promise<void>, label: string): Promise<void> {
     this.queue = this.queue.then(fn).catch((err) => console.error(label, err))
     return this.queue
@@ -112,6 +126,12 @@ export class Reply {
     this.keepAlive = undefined
     this.lastDraft = undefined
     this.live = false
+  }
+
+  /** Give the last draft update time to land before a real message replaces it. */
+  private async settleDraft(): Promise<void> {
+    const wait = this.lastDraftAt + DRAFT_SETTLE_MS - Date.now()
+    if (this.lastDraftAt && wait > 0) await Bun.sleep(wait)
   }
 
   private async pushDraft(markdown: string): Promise<void> {
@@ -132,6 +152,7 @@ export class Reply {
       await this.sync(markdown)
       return
     }
+    this.lastDraftAt = Date.now()
     if (!this.live) return
     this.lastDraft = markdown
     if (this.keepAlive) clearTimeout(this.keepAlive)
