@@ -35,6 +35,8 @@ export class OpenCodeServer {
     private readonly config: Config,
     private readonly password: string,
     private readonly configContent: string,
+    /** Extra environment for the server and everything the agent runs, read on every (re)start. */
+    private readonly extraEnv: () => Record<string, string> = () => ({}),
   ) {
     this.connectHost = ["0.0.0.0", "::", ""].includes(config.OPENCODE_HOST) ? "127.0.0.1" : config.OPENCODE_HOST
     this.client = OpenCode.make({ baseUrl: `http://${this.connectHost}:${config.OPENCODE_PORT}`, headers: { authorization: basicAuth(password) } })
@@ -87,6 +89,7 @@ export class OpenCodeServer {
         cwd: this.config.WORKSPACE_DIR,
         env: {
           ...process.env,
+          ...this.extraEnv(),
           OPENCODE_SERVER_PASSWORD: this.password,
           OPENCODE_CONFIG_CONTENT: this.configContent,
           OPENCODE_DB: join(this.config.DATA_DIR, "opencode.sqlite"),

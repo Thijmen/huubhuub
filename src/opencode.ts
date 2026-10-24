@@ -42,9 +42,16 @@ export class Bridge {
     this.host = server.client
   }
 
-  /** `skillDirs` are added to the config's `skills` paths; OpenCode watches them and reloads on change. */
-  static async start(config: Config, store: Store, skillDirs: string[] = []): Promise<Bridge> {
-    const server = new OpenCodeServer(config, serverPassword(config, store), configContent(skillDirs))
+  /**
+   * `skillDirs` are added to the config's `skills` paths and `pluginDirs` to its `plugins`; OpenCode watches
+   * them and reloads on change. `env` is added to the server's environment, which the agent's commands inherit.
+   */
+  static async start(
+    config: Config,
+    store: Store,
+    opts: { skillDirs?: string[]; pluginDirs?: string[]; env?: () => Record<string, string> } = {},
+  ): Promise<Bridge> {
+    const server = new OpenCodeServer(config, serverPassword(config, store), configContent(opts.skillDirs ?? [], opts.pluginDirs ?? []), opts.env)
     const bridge = new Bridge(server, config, store)
     // MCP overrides live in the server's memory, so every (re)start replays them.
     server.onReady = async () => {
@@ -284,9 +291,11 @@ function sessionOf(event: OpenCodeEvent): string | undefined {
   return typeof id === "string" ? id : undefined
 }
 
-function configContent(skillDirs: string[]): string {
-  const doc = existsSync(configFile()) ? (JSON.parse(stripJsonComments(readFileSync(configFile(), "utf8"))) as { skills?: string[] }) : {}
-  return JSON.stringify({ ...doc, skills: [...(doc.skills ?? []), ...skillDirs] })
+function configContent(skillDirs: string[], pluginDirs: string[]): string {
+  const doc = existsSync(configFile())
+    ? (JSON.parse(stripJsonComments(readFileSync(configFile(), "utf8"))) as { skills?: string[]; plugins?: unknown[] })
+    : {}
+  return JSON.stringify({ ...doc, skills: [...(doc.skills ?? []), ...skillDirs], plugins: [...(doc.plugins ?? []), ...pluginDirs] })
 }
 
 export function configFile(): string {

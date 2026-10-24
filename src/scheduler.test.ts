@@ -22,7 +22,7 @@ class StubRunner implements Runner {
     return { sessionID: `ses_${this.started.length}`, done: Promise.resolve(next) }
   }
 
-  async notify(_chatId: number, html: string) {
+  async notify(_chatId: number | null, html: string) {
     this.notes.push(html)
   }
 }
@@ -156,6 +156,16 @@ describe("Scheduler", () => {
     runner.outcomes.push({ status: "silent" })
     await advance(10 * MIN)
     expect(store.runs(s.id)[0]!.status).toBe("silent")
+  })
+
+  test("background jobs keep their output and point to the admin UI when paused", async () => {
+    const s = add({ chatId: null })
+    runner.outcomes.push({ status: "ok", output: "all good" }, ...Array.from({ length: MAX_FAILURES }, () => ({ status: "failed" as const, error: "x" })))
+    await advance(10 * MIN)
+    expect(store.runs(s.id)[0]).toMatchObject({ status: "ok", output: "all good" })
+    for (let i = 0; i < MAX_FAILURES; i++) await advance(10 * MIN)
+    expect(store.schedule(s.id)!.paused).toBe(true)
+    expect(runner.notes[0]).toContain("admin UI")
   })
 
   test("paused jobs don't fire; run now works regardless and keeps the schedule", async () => {

@@ -13,6 +13,8 @@ const NAME_MAX = 80
 interface Draft {
   chatId: number
   parsed: Parsed
+  /** Set when the prompt started with `$ `: a shell command task. */
+  command: string | null
   model: string | null
   agent: string | null
   silent: boolean
@@ -43,10 +45,12 @@ export function scheduleCommands(deps: { bridge: Bridge; store: Store; scheduler
         return void (await ctx.reply(`⚠️ ${escape(err.message)}\n\n${USAGE}`, { parse_mode: "HTML" }))
       }
       const sessionID = chats.sessionIn(keyOf(ctx))
-      const selection = sessionID ? await bridge.selection(sessionID).catch(() => ({ model: null, agent: null })) : { model: null, agent: null }
+      const command = /^\$\s/.test(parsed.prompt) ? parsed.prompt.slice(1).trim() : null
+      const selection =
+        sessionID && !command ? await bridge.selection(sessionID).catch(() => ({ model: null, agent: null })) : { model: null, agent: null }
       sweep(now)
       const id = Bun.hash(`${ctx.chat.id}:${now}:${input}`).toString(36)
-      const draft: Draft = { chatId: ctx.chat.id, parsed, ...selection, silent: false, created: now }
+      const draft: Draft = { chatId: ctx.chat.id, parsed, command, ...selection, silent: false, created: now }
       drafts.set(id, draft)
       await ctx.reply(draftText(draft, timeZone()), { parse_mode: "HTML", reply_markup: draftKeyboard(id, draft) })
     })
@@ -73,10 +77,10 @@ export function scheduleCommands(deps: { bridge: Bridge; store: Store; scheduler
       const nextAt = firstRun(p, Date.now(), timeZone())
       const s = store.createSchedule({
         chatId: draft.chatId,
-        name: defaultName(p.prompt),
+        name: defaultName(draft.command ?? p.prompt),
         kind: p.kind,
         spec: p.spec,
-        prompt: p.prompt,
+        ...(draft.command ? { type: "command" as const, prompt: "", command: draft.command } : { prompt: p.prompt }),
         model: draft.model,
         agent: draft.agent,
         silent: draft.silent,
@@ -166,14 +170,17 @@ export function scheduleCommands(deps: { bridge: Bridge; store: Store; scheduler
 
 function draftText(d: Draft, tz: string): string {
   const p = d.parsed
+  const what = d.command
+    ? [`<b>Command</b> <code>${escape(clip(d.command, 800))}</code>`]
+    : [`<b>Prompt</b> ${escape(clip(p.prompt, 800))}`, `<b>Model</b> ${escape(d.model ?? "default")} · <b>Agent</b> ${escape(d.agent ?? "default")}`]
+  const silent = d.command ? "on: only posts when the command prints something or fails" : "on: only posts if there's something to report"
   return [
     "⏰ <b>Schedule this?</b>",
     "",
     `<b>When</b> ${escape(describe(p, tz))}`,
     `<b>Next run</b> ${escape(formatTime(p.nextAt, tz))}`,
-    `<b>Prompt</b> ${escape(clip(p.prompt, 800))}`,
-    `<b>Model</b> ${escape(d.model ?? "default")} · <b>Agent</b> ${escape(d.agent ?? "default")}`,
-    `<b>Silent</b> ${d.silent ? `on: only posts if there's something to report` : "off"}`,
+    ...what,
+    `<b>Silent</b> ${d.silent ? silent : "off"}`,
   ].join("\n")
 }
 
@@ -186,11 +193,13 @@ function draftKeyboard(id: string, d: Draft): InlineKeyboard {
 }
 
 export function listText(list: Schedule[], scheduler: Scheduler, tz: string): string {
-  if (!list.length) return `⏰ No scheduled prompts in this chat yet.\n\n${USAGE}`
-  const lines = ["⏰ <b>Scheduled prompts</b>", ""]
+  if (!list.length) return `⏰ Nothing scheduled in this chat yet.\n\n${USAGE}`
+  const lines = ["⏰ <b>Scheduled tasks</b>", ""]
   for (const s of list) {
     const state = scheduler.running(s.id) ? "▶️ running" : s.paused ? "⏸ paused" : s.nextAt ? `next ${formatTime(s.nextAt, tz)}` : "done"
-    const flags = [s.silent ? "🔕" : "", s.failStreak ? `⚠️ ${s.failStreak} failed` : ""].filter(Boolean).join(" ")
+    const flags = [s.type === "command" ? "⚙️" : "", s.createdBy === "agent" ? "🤖" : "", s.silent ? "🔕" : "", s.failStreak ? `⚠️ ${s.failStreak} failed` : ""]
+      .filter(Boolean)
+      .join(" ")
     lines.push(`<b>${s.id}. ${escape(s.name)}</b> ${flags}`, `   ${escape(describe(s, tz))} · ${escape(state)}`)
   }
   return lines.join("\n")

@@ -3010,3 +3010,55 @@ pre.plain {
 .error-text {
   color: var(--error);
 }
+
+.schedule-command,
+.schedule-output {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.schedule-command {
+  max-height: 7.5em;
+  overflow: hidden;
+}
+
+.schedule-output {
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* GitHub */
+
+.gh-callout-text {
+  margin: 4px 0 0;
+}
+
+.gh-installs-head {
+  padding: 16px 20px 0;
+  flex-wrap: wrap;
+}
+
+.gh-agent {
+  gap: 10px;
+}
+
+.gh-notes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gh-skills-hint {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}

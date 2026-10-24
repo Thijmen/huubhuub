@@ -40,16 +40,23 @@ export interface SkillSource {
 export type SkillSourcePatch = Partial<Pick<SkillSource, "ref" | "installationId" | "lastSyncAt" | "lastCommit" | "lastError" | "failStreak">>
 
 export type ScheduleKind = "cron" | "interval" | "once"
+/** `prompt` sends a prompt to the agent; `command` runs a shell command in the workspace. */
+export type TaskType = "prompt" | "command"
 export type RunStatus = "running" | "ok" | "failed" | "silent" | "skipped" | "missed"
 
 export interface Schedule {
   id: number
-  chatId: number
+  /** The Telegram chat runs are posted in; null runs in the background, visible in the admin UI only. */
+  chatId: number | null
   name: string
   kind: ScheduleKind
   /** A cron expression or nickname, `every 30m`, or the ISO time of a one-off job. */
   spec: string
+  type: TaskType
+  /** Empty for command tasks. */
   prompt: string
+  /** The command of a command task, or an optional pre-check for a prompt task: the prompt only runs when it prints something. */
+  command: string | null
   /** `provider/model`, or null for the default. */
   model: string | null
   agent: string | null
@@ -58,6 +65,7 @@ export interface Schedule {
   failStreak: number
   /** Epoch ms of the next run; null once a one-off job has fired. */
   nextAt: number | null
+  createdBy: "user" | "agent"
   createdAt: number
 }
 
@@ -69,10 +77,15 @@ export interface ScheduleRun {
   endedAt: number | null
   status: RunStatus
   error: string | null
+  /** What a command printed, or the agent's reply; trimmed to the last few KB. */
+  output: string | null
 }
 
-export type NewSchedule = Pick<Schedule, "chatId" | "name" | "kind" | "spec" | "prompt" | "model" | "agent" | "silent" | "nextAt">
-export type SchedulePatch = Partial<Omit<Schedule, "id" | "chatId" | "createdAt">>
+export type NewSchedule = Pick<Schedule, "chatId" | "name" | "kind" | "spec" | "prompt" | "model" | "agent" | "silent" | "nextAt"> &
+  Partial<Pick<Schedule, "type" | "command" | "createdBy">>
+export type SchedulePatch = Partial<Omit<Schedule, "id" | "createdAt" | "createdBy">>
+
+const RUN_OUTPUT_MAX = 8000
 
 const SKILL_SOURCE_COLUMNS: Record<keyof SkillSourcePatch, string> = {
   ref: "ref",
@@ -84,10 +97,13 @@ const SKILL_SOURCE_COLUMNS: Record<keyof SkillSourcePatch, string> = {
 }
 
 const SCHEDULE_COLUMNS: Record<keyof SchedulePatch, string> = {
+  chatId: "chat_id",
   name: "name",
   kind: "kind",
   spec: "spec",
+  type: "type",
   prompt: "prompt",
+  command: "command",
   model: "model",
   agent: "agent",
   silent: "silent",
@@ -114,21 +130,8 @@ export class Store {
     this.db.run("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     this.db.run("CREATE TABLE IF NOT EXISTS env_vars (name TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
     this.db.run("CREATE TABLE IF NOT EXISTS mcp_servers (name TEXT PRIMARY KEY, config TEXT, updated_at INTEGER NOT NULL)")
-    this.db.run(`CREATE TABLE IF NOT EXISTS schedules (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      chat_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      spec TEXT NOT NULL,
-      prompt TEXT NOT NULL,
-      model TEXT,
-      agent TEXT,
-      silent INTEGER NOT NULL DEFAULT 0,
-      paused INTEGER NOT NULL DEFAULT 0,
-      fail_streak INTEGER NOT NULL DEFAULT 0,
-      next_at INTEGER,
-      created_at INTEGER NOT NULL
-    )`)
+    this.migrateSchedules()
+    this.db.run(schedulesTable("schedules"))
     this.db.run(`CREATE TABLE IF NOT EXISTS schedule_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       schedule_id INTEGER NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
@@ -136,8 +139,10 @@ export class Store {
       started_at INTEGER NOT NULL,
       ended_at INTEGER,
       status TEXT NOT NULL,
-      error TEXT
+      error TEXT,
+      output TEXT
     )`)
+    if (!this.columns("schedule_runs").some((c) => c.name === "output")) this.db.run("ALTER TABLE schedule_runs ADD COLUMN output TEXT")
     this.db.run("CREATE INDEX IF NOT EXISTS schedule_runs_by_schedule ON schedule_runs (schedule_id, started_at DESC)")
     this.dropPatSkillSources()
     this.db.run(`CREATE TABLE IF NOT EXISTS skill_sources (
@@ -163,10 +168,29 @@ export class Store {
 
   /** A development build stored a token per skill source; sources now go through the GitHub App and must be added again. */
   private dropPatSkillSources(): void {
-    const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(skill_sources)").all()
-    if (!columns.some((c) => c.name === "token")) return
+    if (!this.columns("skill_sources").some((c) => c.name === "token")) return
     this.db.run("DROP TABLE IF EXISTS skill_states")
     this.db.run("DROP TABLE skill_sources")
+  }
+
+  private columns(table: string): { name: string; notnull: number }[] {
+    return this.db.query<{ name: string; notnull: number }, []>(`PRAGMA table_info(${table})`).all()
+  }
+
+  /**
+   * Schedules used to require a chat and only ran prompts. SQLite can't drop NOT NULL in place, so the
+   * table is rebuilt; foreign keys are still off here, so the run history survives.
+   */
+  private migrateSchedules(): void {
+    const cols = this.columns("schedules")
+    if (!cols.length || cols.find((c) => c.name === "chat_id")?.notnull === 0) return
+    const kept = "id, chat_id, name, kind, spec, prompt, model, agent, silent, paused, fail_streak, next_at, created_at"
+    this.db.transaction(() => {
+      this.db.run(schedulesTable("schedules_next"))
+      this.db.run(`INSERT INTO schedules_next (${kept}) SELECT ${kept} FROM schedules`)
+      this.db.run("DROP TABLE schedules")
+      this.db.run("ALTER TABLE schedules_next RENAME TO schedules")
+    })()
   }
 
   /** Earlier versions keyed sessions by chat only. */
@@ -284,11 +308,13 @@ export class Store {
     this.db.query("DELETE FROM mcp_servers WHERE name = ?").run(name)
   }
 
-  schedules(chatId?: number): Schedule[] {
+  schedules(chatId?: number | null): Schedule[] {
     const rows =
       chatId === undefined
-        ? this.db.query<ScheduleRow, []>("SELECT * FROM schedules ORDER BY chat_id, id").all()
-        : this.db.query<ScheduleRow, [number]>("SELECT * FROM schedules WHERE chat_id = ? ORDER BY id").all(chatId)
+        ? this.db.query<ScheduleRow, []>("SELECT * FROM schedules ORDER BY chat_id IS NULL, chat_id, id").all()
+        : chatId === null
+          ? this.db.query<ScheduleRow, []>("SELECT * FROM schedules WHERE chat_id IS NULL ORDER BY id").all()
+          : this.db.query<ScheduleRow, [number]>("SELECT * FROM schedules WHERE chat_id = ? ORDER BY id").all(chatId)
     return rows.map(toSchedule)
   }
 
@@ -299,11 +325,28 @@ export class Store {
 
   createSchedule(s: NewSchedule, now = Date.now()): Schedule {
     const { id } = this.db
-      .query<{ id: number }, [number, string, string, string, string, string | null, string | null, number, number | null, number]>(
-        `INSERT INTO schedules (chat_id, name, kind, spec, prompt, model, agent, silent, next_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      .query<
+        { id: number },
+        [number | null, string, string, string, string, string, string | null, string | null, string | null, number, number | null, string, number]
+      >(
+        `INSERT INTO schedules (chat_id, name, kind, spec, type, prompt, command, model, agent, silent, next_at, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
-      .get(s.chatId, s.name, s.kind, s.spec, s.prompt, s.model, s.agent, s.silent ? 1 : 0, s.nextAt, now)!
+      .get(
+        s.chatId,
+        s.name,
+        s.kind,
+        s.spec,
+        s.type ?? "prompt",
+        s.prompt,
+        s.command ?? null,
+        s.model,
+        s.agent,
+        s.silent ? 1 : 0,
+        s.nextAt,
+        s.createdBy ?? "user",
+        now,
+      )!
     return this.schedule(id)!
   }
 
@@ -334,8 +377,10 @@ export class Store {
     this.db.query("UPDATE schedule_runs SET session_id = ? WHERE id = ?").run(sessionID, runId)
   }
 
-  finishRun(runId: number, status: RunStatus, error: string | null = null, endedAt = Date.now()): void {
-    this.db.query("UPDATE schedule_runs SET status = ?, error = ?, ended_at = ? WHERE id = ?").run(status, error, endedAt, runId)
+  finishRun(runId: number, status: RunStatus, error: string | null = null, endedAt = Date.now(), output: string | null = null): void {
+    this.db
+      .query("UPDATE schedule_runs SET status = ?, error = ?, ended_at = ?, output = ? WHERE id = ?")
+      .run(status, error, endedAt, output === null ? null : output.slice(-RUN_OUTPUT_MAX), runId)
   }
 
   runs(scheduleId: number, limit = 20): ScheduleRun[] {
@@ -420,18 +465,42 @@ function toState(row: Row): ChatState {
 
 type ScheduleRow = {
   id: number
-  chat_id: number
+  chat_id: number | null
   name: string
   kind: ScheduleKind
   spec: string
+  type: TaskType
   prompt: string
+  command: string | null
   model: string | null
   agent: string | null
   silent: number
   paused: number
   fail_streak: number
   next_at: number | null
+  created_by: "user" | "agent"
   created_at: number
+}
+
+function schedulesTable(name: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${name} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    spec TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'prompt',
+    prompt TEXT NOT NULL,
+    command TEXT,
+    model TEXT,
+    agent TEXT,
+    silent INTEGER NOT NULL DEFAULT 0,
+    paused INTEGER NOT NULL DEFAULT 0,
+    fail_streak INTEGER NOT NULL DEFAULT 0,
+    next_at INTEGER,
+    created_by TEXT NOT NULL DEFAULT 'user',
+    created_at INTEGER NOT NULL
+  )`
 }
 
 function toSchedule(r: ScheduleRow): Schedule {
@@ -441,13 +510,16 @@ function toSchedule(r: ScheduleRow): Schedule {
     name: r.name,
     kind: r.kind,
     spec: r.spec,
+    type: r.type,
     prompt: r.prompt,
+    command: r.command,
     model: r.model,
     agent: r.agent,
     silent: r.silent === 1,
     paused: r.paused === 1,
     failStreak: r.fail_streak,
     nextAt: r.next_at,
+    createdBy: r.created_by,
     createdAt: r.created_at,
   }
 }
@@ -486,6 +558,7 @@ type RunRow = {
   ended_at: number | null
   status: RunStatus
   error: string | null
+  output: string | null
 }
 
 function toRun(r: RunRow): ScheduleRun {
@@ -497,5 +570,6 @@ function toRun(r: RunRow): ScheduleRun {
     endedAt: r.ended_at,
     status: r.status,
     error: r.error,
+    output: r.output,
   }
 }

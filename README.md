@@ -7,7 +7,9 @@ A Telegram bot that uses an [OpenCode V2](https://opencode.ai/v2/docs/) server a
 - **Voice notes**: transcribed with Amazon Transcribe Streaming, then sent as a prompt.
 - **Threads**: each new conversation opens its own Telegram topic, named after the session title once OpenCode generates one. See [Threads](#threads).
 - **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/schedule`, `/schedules`, `/skills`, `/whoami`, `/help`
-- **Skills**: pull `SKILL.md` skills from (private) GitHub repos through a GitHub App, managed in the admin UI. See [Skills](#skills).
+- **Scheduled tasks**: prompts or shell commands on a cron, interval or one-off schedule, posted in a chat or run in the background. The agent can schedule things itself. See [Scheduled tasks](#scheduled-tasks).
+- **GitHub**: one GitHub App, set up from the admin UI, gives the agent `gh` and `git` access to the repos you pick. See [GitHub](#github).
+- **Skills**: pull `SKILL.md` skills from (private) GitHub repos through the same GitHub App, managed in the admin UI. See [Skills](#skills).
 - **Allowlist**: only the Telegram user IDs in `ALLOWED_USER_IDS`, or those added in the admin UI, can use the bot.
 - **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, and read and reply to conversations live, and open the OpenCode web UI for debugging. See [Admin UI](#admin-ui).
 
@@ -39,7 +41,15 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/env-import.ts` | Parses pasted `.env`/JSON/bare keys and decides where each one goes |
 | `src/mcp-import.ts` | Parses pasted Claude Desktop / Cursor / OpenCode MCP configs |
 | `src/skills.ts` | Skill repos: clone/pull, scan `SKILL.md`, link enabled skills for OpenCode |
-| `src/github-app.ts` | GitHub App: manifest setup, JWTs, installation tokens, installed repos |
+| `src/github-app.ts` | GitHub App: manifest setup, JWTs, installation tokens, installations |
+| `src/github-access.ts` | The agent's GitHub access: picks an installation per repo owner, writes the git config agent processes include |
+| `src/internal.ts` | Loopback API for the OpenCode plugin and the git credential helper |
+| `src/agent-plugin/` | OpenCode plugin: the agent's `schedule_*` tools, and `GH_TOKEN` for every shell command |
+| `bin/git-credential-bot` | git credential helper that asks the bot for an installation token |
+| `src/scheduler.ts` | Fires due jobs, logs missed and skipped runs, pauses jobs that keep failing |
+| `src/schedule-runner.ts` | Runs a job: a prompt in a fresh session, or a shell command; posts the result |
+| `src/schedule-service.ts` | Validation shared by the admin UI and the agent's tools |
+| `src/agent-schedules.ts` | What the `schedule_*` tools do, scoped to the conversation's chat |
 | `src/skill-commands.ts` | `/skills` |
 | `src/admin/server.ts` | Admin JSON API and static frontend (`Bun.serve`) |
 | `src/admin/web/` | Admin frontend (React, no build step) |
@@ -61,6 +71,7 @@ docker compose logs -f
 ```
 
 `./workspace` is mounted as the agent's working directory. Put repositories there, or let the agent clone them. Session state lives in the `bot-data` volume and survives restarts. Port `4196` serves the OpenCode web UI and is bound to `127.0.0.1`, like the admin UI.
+
 
 ### Local
 
@@ -90,9 +101,9 @@ When the agent uses its `question` tool, the bot posts the question with a butto
 - ✖ Skip dismisses the whole set. If you don't answer within `QUESTION_TIMEOUT_MINUTES` (default 10, also in the admin UI), the question times out. Either way the agent is told and carries on.
 - The same question shows in the admin UI's conversation view. Whichever side answers first wins, and the Telegram message collapses into a summary.
 
-## Scheduled prompts
+## Scheduled tasks
 
-`/schedule <when> <prompt>` runs a prompt on its own. The bot shows the next run time and asks you to confirm.
+`/schedule <when> <prompt>` runs a prompt on its own. The bot shows the next run time and asks you to confirm. Start the prompt with `$` to run a shell command instead: `/schedule every 1h $ ./check-disk.sh`. Or just ask the agent ("remind me every Monday at 9 to…"); it has tools to list, create, change, pause and run schedules.
 
 | When | Example |
 | --- | --- |
@@ -101,21 +112,55 @@ When the agent uses its `question` tool, the bot posts the question with a butto
 | Intervals | `every 30m`, `every 2h` |
 | Once | `in 2h`, `at 18:00`, `at 2026-10-01 09:00` |
 
+A task is one of:
+
+- **Prompt**: each run starts a fresh session with the prompt. The job keeps the model and agent of the thread you created it in.
+- **Command**: runs with bash in the workspace, with the agent's environment (so `gh` and `git` use the [GitHub App](#github)). It's stopped after 15 minutes. Its output is posted, or kept in the run history.
+- **Prompt with a pre-check**: a command runs first. The prompt only runs when the command exits 0 and prints something, and gets that output appended. Good for cheap polling: `gh pr list --repo acme/api --label needs-review` costs no tokens when there's nothing to review. A failing pre-check counts as a failed run.
+
+Where results go:
+
+- **A chat**: prompt runs open a new topic, `⏰ <name> · <date time>`, or use the main chat if it has no topics. Command output is posted in the main chat.
+- **Background**: nothing is posted. Output and sessions show in the run history on the admin UI's Schedules page.
+
+Other behaviour:
+
 - Times use `SCHEDULE_TIMEZONE` (default: the server's time zone, also set in the admin UI), including daylight saving changes.
-- Each run starts a fresh session in a new topic, `⏰ <name> · <date time>`, or in the main chat if the chat has no topics. The job keeps the model and agent of the thread you created it in.
-- **Silent** jobs (toggle it when confirming) may reply `[SILENT]` when there's nothing to report; then nothing is posted. Otherwise their output is posted all at once when the run ends.
-- `/schedules` lists this chat's jobs, with buttons to pause or resume, run now, rename and delete.
+- **Silent** jobs only post when there's something to report. A prompt job's agent replies `[SILENT]` when there's nothing; a command job stays quiet when it prints nothing. Otherwise a silent prompt's output is posted all at once when the run ends.
+- `/schedules` lists this chat's jobs, with buttons to pause or resume, run now, rename and delete. ⚙️ marks commands and 🤖 jobs the agent made.
 - If a run is still going when the next one is due, the next one is skipped. Runs that came due while the bot was down are skipped too, except one-off jobs, which run at startup. All of this shows in the run history.
-- After 3 failed runs in a row a job pauses itself and tells you.
-- The admin UI's **Schedules** page shows every job grouped by chat, with its run history. You can create jobs there and edit any field.
+- After 3 failed runs in a row a job pauses itself and tells you. Background jobs tell every allowlisted user.
+- The agent sees the jobs of the chat it's talking in, plus the background ones. Jobs it makes can't run more often than every 5 minutes, and it can have at most 20.
+- The admin UI's **Schedules** page shows every job grouped by chat, with its run history and output. You can create jobs there and edit any field, including where results go.
+
+## GitHub
+
+The admin UI's **GitHub** page connects one GitHub App. The agent uses it for `gh` and `git`, and the bot uses it to pull [skill repos](#skills).
+
+1. **Create**: press *Create GitHub App*. GitHub opens with a prefilled private app that may read and write code, pull requests and issues, and read Actions and checks. Confirm it, and GitHub sends you back to the portal, which stores the app's ID and private key. Fill in an organization first if the app should belong to one.
+2. **Install**: press *Install on repos* and pick the accounts and repos the bot may use. Install it on more accounts any time.
+
+What the agent gets:
+
+- **`gh`**: every shell command the agent runs gets a fresh installation token as `GH_TOKEN`, through the bot's OpenCode plugin. Inside a checkout the token is for the account that owns its `origin`; elsewhere it's for the default installation, which you can change on the GitHub page. A `GH_TOKEN` or `GITHUB_TOKEN` you set yourself (for example a pasted PAT) takes precedence.
+- **`git`**: OpenCode and everything it starts include `/data/github/gitconfig`, which points github.com at `bin/git-credential-bot`. The helper asks the bot for a token for the repo's owner, so clone, fetch and push need no setup. It replaces any credential helper from your own git config for github.com, but only while an app is connected.
+- **Commits** are authored as `<app>[bot]`, so GitHub links them to the app.
+- **Scheduled commands** get the same access.
+
+Notes:
+
+- Installation tokens last an hour. The bot mints them on demand and keeps them in memory only; each shell command gets one that's valid for at least 20 more minutes.
+- The tokens act as the app, not as you. Commands that need a user, such as `gh pr status` or searches with `@me`, don't work.
+- The agent can read the token from its environment and ask the bot's loopback API for more. That's no more than it can already do with `gh`, but keep the installations to repos you're happy for it to change.
+- An app created by an earlier version only asked to read code. The GitHub page says what's missing. Raise the permissions in the app's settings, then accept the change on each installation.
+- The Docker image includes the GitHub CLI. When running locally, install it yourself.
 
 ## Skills
 
 The admin UI's **Skills** page loads [agent skills](https://opencode.ai/docs/skills/) from GitHub repos, including private ones. Each skill is a directory with a `SKILL.md` whose frontmatter has a `name` and a `description`.
 
-1. **Connect GitHub**: press *Create GitHub App*. GitHub opens with a prefilled private app that can only read repository contents. Confirm it, and GitHub sends you back to the portal, which stores the app's ID and private key. Fill in an organization first if the app should belong to one.
-2. **Install**: press *Install on repos* and pick the repos the bot may read.
-3. **Add repo**: pick one of those repos and optionally a branch or tag. The bot checks it can read the repo before saving.
+1. **Connect GitHub** on the [GitHub](#github) page, and install the app on your skill repos.
+2. **Add repo**: pick one of those repos and optionally a branch or tag. The bot checks it can read the repo before saving.
 
 - The bot authenticates as the app. It signs a JWT with the private key and exchanges it for a 1-hour installation token, which is sent to `git` as an HTTP header. No token is stored in `.git/config`, and the agent never sees one. The private key is kept in `/data/bot.sqlite`.
 - Every `SKILL.md` in the repo is picked up, and new skills start enabled. Switch individual skills off on the Skills page. A skill without valid frontmatter, or with a name another repo already provides (the first repo added wins), is shown with its error and not loaded.
@@ -130,7 +175,8 @@ The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN
 
 - **Providers**: search all integrations OpenCode knows about. Paste an API key, run the OAuth/device-code sign-in, switch between or remove stored credentials, or set the provider's env var.
 - **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. OpenCode then restarts (about a second) to pick it up, and running turns resume.
-- **Skills**: connect a GitHub App, add the repos it's installed on, toggle skills, and sync. See [Skills](#skills).
+- **GitHub**: create and install the GitHub App, see which accounts it's installed on and whether they've granted everything, and pick the default account for `gh`. See [GitHub](#github).
+- **Skills**: add the repos the GitHub App is installed on, toggle skills, and sync. See [Skills](#skills).
 - **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `bot.opencode.jsonc`.
 - **Settings**: default model and agent, the Telegram allowlist, thread mode, the question timeout, the schedule time zone and the skill sync interval. Values set here override the environment. "Reset" goes back to the env value.
 - **OpenCode** (in the sidebar, plus a card on Overview): opens the real OpenCode web UI in a new tab, signed in with a one-time link. It shows the bot's sessions, the workspace files and a terminal, which helps when debugging. The card shows whether the server is running, its version, and any crash restarts.

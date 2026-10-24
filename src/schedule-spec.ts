@@ -24,7 +24,13 @@ export const USAGE = [
   "• <code>every 30m</code>, <code>every 2h</code>",
   "• once: <code>in 2h</code>, <code>at 18:00</code> or <code>at 2026-10-01 09:00</code>",
   "",
-  "Example: <code>/schedule @daily 08:00 Summarise the open GitHub issues</code>",
+  "Start the prompt with <code>$</code> to run a shell command in the workspace instead.",
+  "",
+  "Examples:",
+  "<code>/schedule @daily 08:00 Summarise the open GitHub issues</code>",
+  "<code>/schedule every 1h $ ./check-disk.sh</code>",
+  "",
+  "You can also just ask the agent to schedule something.",
 ].join("\n")
 
 const UNIT_MS = { m: 60_000, h: 3_600_000, d: 86_400_000 } as const
