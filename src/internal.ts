@@ -1,16 +1,19 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import type { AgentScheduleInput, AgentSchedules } from "./agent-schedules"
 import type { GitHubAccess } from "./github-access"
+import { MemoryError, type Personas } from "./personas"
 import { SpecError } from "./schedule-spec"
 import { SkillError } from "./skills"
 
 export interface InternalDeps {
   github: GitHubAccess
   schedules: AgentSchedules
+  personas: Pick<Personas, "context" | "agentMemory">
 }
 
 /**
- * A loopback-only API for processes the bot starts: the OpenCode plugin (schedule tools, `gh` tokens) and
+ * A loopback-only API for processes the bot starts: the OpenCode plugin (schedule and memory tools, the
+ * persona and memories for the system prompt, `gh` tokens) and
  * the git credential helper. It starts before OpenCode so its address can go into OpenCode's environment;
  * the services behind it are attached once they exist.
  */
@@ -26,7 +29,7 @@ export class InternalApi {
       try {
         return await handler(req, this.deps)
       } catch (err) {
-        const known = err instanceof SpecError || err instanceof SkillError
+        const known = err instanceof SpecError || err instanceof SkillError || err instanceof MemoryError
         if (!known) console.error(`internal ${req.method} ${new URL(req.url).pathname} failed`, err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: known ? 400 : 500 })
       }
@@ -41,6 +44,20 @@ export class InternalApi {
             const q = new URL(req.url).searchParams
             const token = await d.github.token({ owner: q.get("owner") ?? undefined, cwd: q.get("cwd") ?? undefined, strict: q.get("strict") === "1" })
             return token ? new Response(token, { headers: { "content-type": "text/plain" } }) : new Response(null, { status: 204 })
+          }),
+        },
+        "/agent/context": {
+          GET: guard(async (req, d) => {
+            const sessionID = new URL(req.url).searchParams.get("sessionID")
+            if (!sessionID) throw new SpecError("Missing sessionID.")
+            return Response.json(d.personas.context(sessionID))
+          }),
+        },
+        "/agent/memory/:op": {
+          POST: guard(async (req, d) => {
+            const body = (await req.json().catch(() => ({}))) as { sessionID?: string; id?: number; text?: string }
+            if (!body.sessionID) throw new SpecError("Missing sessionID.")
+            return Response.json({ text: d.personas.agentMemory(req.params.op ?? "", body.sessionID, body) })
           }),
         },
         "/agent/schedules/:op": {

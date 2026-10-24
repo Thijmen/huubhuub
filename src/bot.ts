@@ -35,6 +35,9 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
         "/schedule – run a prompt or command on a schedule",
         "/schedules – list and manage scheduled tasks",
         "/skills – list loaded skills and sync them",
+        "/persona – pick who the bot is for you",
+        "/memory – what the bot remembers about you, and when it may remember things",
+        "/forget <n> – forget one memory",
         "/whoami – show your Telegram user ID",
       ].join("\n"),
     ),
@@ -49,7 +52,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
       ? `🆕 New conversation <code>${started.sessionID}</code>. ${prompt ? "" : "Send your first message here."}`
       : `🆕 New session <code>${started.sessionID}</code>`
     await ctx.api.sendMessage(started.key.chatId, text.trim(), { parse_mode: "HTML", ...threadParams(started.key) })
-    if (prompt) await chat.send(started.key, prompt)
+    if (prompt) await chat.send(started.key, prompt, [], ctx.from)
   })
 
   bot.command("stop", async (ctx) => {

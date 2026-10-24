@@ -101,3 +101,64 @@ function clip<T>(value: T, max = MAX_STRING): T {
   }
   return value
 }
+
+const TOOL_SCAN_MESSAGES = 1000
+const TOOL_CALLS_MAX = 300
+
+type ToolPart = Extract<Extract<Message, { type: "assistant" }>["content"][number], { type: "tool" }>
+
+export interface ToolTally {
+  name: string
+  count: number
+  errors: number
+}
+
+/**
+ * Every tool call in a session, newest first, with a tally per tool. Code Mode wraps plugin and MCP tools
+ * in an `execute` call; the tally counts the tools its script called instead.
+ */
+export async function toolCalls(bridge: Bridge, sessionID: string) {
+  const messages: Message[] = []
+  let cursor: string | undefined
+  while (messages.length < TOOL_SCAN_MESSAGES) {
+    const page = await bridge.host.message.list({ sessionID, order: "desc", limit: 200, ...(cursor ? { cursor } : {}) })
+    messages.push(...page.data)
+    cursor = page.cursor.next ?? undefined
+    if (!cursor || page.data.length < 200) break
+  }
+  return { ...summariseTools(messages), partial: messages.length >= TOOL_SCAN_MESSAGES }
+}
+
+/** `messages` newest first. */
+export function summariseTools(messages: Message[]) {
+  const tally = new Map<string, ToolTally>()
+  const calls: { messageID: string; inner: string[]; part: unknown }[] = []
+  let total = 0
+  for (const m of messages) {
+    if (m.type !== "assistant") continue
+    const parts = m.content.filter((c): c is ToolPart => c.type === "tool").reverse()
+    for (const part of parts) {
+      total++
+      const inner = part.name === "execute" ? innerTools(part.state.input) : []
+      const failed = part.state.status === "error"
+      for (const name of inner.length ? inner : [part.name]) {
+        const t = tally.get(name) ?? { name, count: 0, errors: 0 }
+        t.count++
+        if (failed) t.errors++
+        tally.set(name, t)
+      }
+      if (calls.length < TOOL_CALLS_MAX) calls.push({ messageID: m.id, inner, part: clip(part, 4000) })
+    }
+  }
+  return { total, tally: [...tally.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)), calls }
+}
+
+/** Tools a Code Mode script calls: `tools.name(…)`, `tools.ns.name(…)` or `tools.ns["name"](…)`. */
+export function innerTools(input: unknown): string[] {
+  const code = typeof input === "object" && input && typeof (input as { code?: unknown }).code === "string" ? (input as { code: string }).code : ""
+  const out = new Set<string>()
+  for (const m of code.matchAll(/\btools\.([A-Za-z_$][\w$]*)(?:\.([A-Za-z_$][\w$]*)|\[\s*["'`]([^"'`]+)["'`]\s*\])?\s*\(/g)) {
+    out.add(m[2] ?? m[3] ?? m[1]!)
+  }
+  return [...out]
+}

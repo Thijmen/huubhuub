@@ -668,14 +668,15 @@ function Part({ part, streaming }: { part: AssistantPart; streaming: boolean }) 
   return <ToolCard part={part} />
 }
 
-function ToolCard({ part }: { part: Extract<AssistantPart, { type: "tool" }> }) {
+/** `inner`: the tools a Code Mode `execute` script called, shown next to the name. */
+export function ToolCard({ part, inner }: { part: Extract<AssistantPart, { type: "tool" }>; inner?: string[] }) {
   const s = part.state
   const status = s.status === "completed" ? "ok" : s.status === "error" ? "error" : "running"
   const input = typeof s.input === "string" ? undefined : s.input
   const took = part.time.completed && part.time.ran ? part.time.completed - part.time.ran : undefined
   return (
     <div className={`tool-card tool-${status}`}>
-      <Collapsible summary={<ToolSummary icon={toolIcon(part.name)} name={part.name} label={toolLabel(input)} status={status} took={took} />}>
+      <Collapsible summary={<ToolSummary icon={toolIcon(part.name)} name={inner?.length ? `${part.name} → ${inner.join(", ")}` : part.name} label={toolLabel(input)} status={status} took={took} />}>
         <ToolDetail state={s} />
       </Collapsible>
     </div>
@@ -879,7 +880,7 @@ function lastIsStreaming(messages: ChatMessage[]): boolean {
 }
 
 function toolLabel(input: Record<string, unknown> | undefined): string {
-  for (const k of ["command", "filePath", "path", "pattern", "url", "query", "description", "prompt"]) {
+  for (const k of ["command", "filePath", "path", "pattern", "url", "query", "description", "prompt", "code"]) {
     const v = input?.[k]
     if (typeof v === "string" && v) return v.replace(/\s+/g, " ").slice(0, 140)
   }

@@ -1,7 +1,8 @@
 /**
- * Loaded into the bot's `opencode serve`. Gives the agent tools to manage scheduled tasks, and hands every
- * shell command a fresh GitHub App token as GH_TOKEN so `gh` works. Both go through the bot's loopback API,
- * whose address and token are in the environment.
+ * Loaded into the bot's `opencode serve`. Gives the agent tools to manage scheduled tasks and its memory,
+ * adds the user's persona and memories to the system prompt, and hands every shell command a fresh GitHub
+ * App token as GH_TOKEN so `gh` works. All of it goes through the bot's loopback API, whose address and
+ * token are in the environment.
  */
 import type { Plugin } from "@opencode/plugin/promise/plugin"
 
@@ -58,6 +59,29 @@ const TOOLS = [
   { name: "schedule_run", description: "Run a scheduled task right now, outside its schedule.", input: { type: "object", properties: { id }, required: ["id"], additionalProperties: false } },
 ]
 
+const memoryId = { type: "integer", description: "The memory's number, as listed in the system prompt." } as const
+const memoryText = { type: "string", description: "One short, self-contained sentence, written about the user in the third person." } as const
+
+const MEMORY_TOOLS = [
+  {
+    name: "memory_save",
+    description:
+      "Save something about the user to long-term memory, so it's known in future conversations. Follow the memory rules in the system prompt about when to use this; when in doubt, don't.",
+    input: { type: "object", properties: { text: memoryText }, required: ["text"], additionalProperties: false },
+  },
+  {
+    name: "memory_update",
+    description: "Correct or extend an existing memory instead of saving a near-duplicate.",
+    input: { type: "object", properties: { id: memoryId, text: memoryText }, required: ["id", "text"], additionalProperties: false },
+  },
+  {
+    name: "memory_forget",
+    description: "Delete a memory, e.g. when the user asks you to forget it or it's no longer true.",
+    input: { type: "object", properties: { id: memoryId }, required: ["id"], additionalProperties: false },
+  },
+]
+const MEMORY_TOOL_NAMES = new Set(MEMORY_TOOLS.map((t) => t.name))
+
 async function call(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<Response> {
   const url = process.env.BOT_INTERNAL_URL
   if (!url) throw new Error("The bot's internal API isn't configured.")
@@ -72,6 +96,20 @@ const plugin: Plugin = {
   id: "telegram-bot",
   async setup(ctx) {
     await ctx.tool.transform((editor) => {
+      for (const tool of MEMORY_TOOLS) {
+        const op = tool.name.slice("memory_".length)
+        editor.add({
+          name: tool.name,
+          description: tool.description,
+          input: tool.input,
+          execute: async (input, context) => {
+            const res = await call(`/agent/memory/${op}`, { method: "POST", body: JSON.stringify({ ...(input as object), sessionID: context.sessionID }) }, context.signal)
+            const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string }
+            if (!res.ok) throw new Error(body.error ?? `The bot answered ${res.status}.`)
+            return { content: body.text ?? "" }
+          },
+        })
+      }
       for (const tool of TOOLS) {
         const op = tool.name.slice("schedule_".length)
         editor.add({
@@ -86,6 +124,20 @@ const plugin: Plugin = {
           },
         })
       }
+    })
+
+    // Runs before every model request, so persona and memory edits apply on the next turn.
+    await ctx.session.hook("context", async (request) => {
+      let context: { system: string | null; memory: boolean } = { system: null, memory: false }
+      try {
+        const res = await call(`/agent/context?sessionID=${encodeURIComponent(request.sessionID)}`, {}, AbortSignal.timeout(5000))
+        if (res.ok) context = (await res.json()) as typeof context
+      } catch (err) {
+        console.error("Couldn't load the persona and memories for this session", err)
+      }
+      if (context.system) request.system.push({ type: "text", text: context.system })
+      // With Code Mode, plugin tools are listed in the system prompt rather than here; the bot then refuses the calls instead.
+      if (!context.memory) for (const name of MEMORY_TOOL_NAMES) delete request.tools[name]
     })
 
     // A token set by hand (say, a pasted PAT) wins over the app's.

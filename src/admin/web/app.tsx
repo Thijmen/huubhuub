@@ -5,6 +5,8 @@ import { McpPage } from "./pages/mcp"
 import { EnvPage } from "./pages/env"
 import { GitHubPage } from "./pages/github"
 import { OverviewPage } from "./pages/overview"
+import { PeoplePage } from "./pages/people"
+import { PersonasPage } from "./pages/personas"
 import { ProvidersPage } from "./pages/providers"
 import { SchedulesPage } from "./pages/schedules"
 import { SettingsPage } from "./pages/settings"
@@ -20,6 +22,8 @@ const TABS = [
   { id: "github", label: "GitHub", icon: "⎇" },
   { id: "skills", label: "Skills", icon: "📚" },
   { id: "threads", label: "Conversations", icon: "✦" },
+  { id: "personas", label: "Personas", icon: "🎭" },
+  { id: "people", label: "People", icon: "☺" },
   { id: "schedules", label: "Schedules", icon: "⏰" },
   { id: "settings", label: "Settings", icon: "⚙" },
 ] as const
@@ -119,6 +123,8 @@ function App() {
           {tab === "skills" && <SkillsPage />}
           {tab === "threads" && <ThreadsPage selected={thread} open={openThread} />}
           {tab === "schedules" && <SchedulesPage openThread={(id) => (location.hash = `threads/${encodeURIComponent(id)}`)} />}
+          {tab === "personas" && <PersonasPage />}
+          {tab === "people" && <PeoplePage />}
           {tab === "settings" && <SettingsPage />}
         </div>
       </main>

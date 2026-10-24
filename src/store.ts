@@ -11,6 +11,8 @@ export interface ChatKey {
 
 export interface ChatState extends ChatKey {
   sessionID: string
+  /** The Telegram user who last sent a message here; whose persona and memories the session uses. */
+  userId: number | null
   /** The bot created this topic, so it may rename it after the session title. */
   autoTitle: boolean
   updatedAt: number
@@ -38,6 +40,41 @@ export interface SkillSource {
 }
 
 export type SkillSourcePatch = Partial<Pick<SkillSource, "ref" | "installationId" | "lastSyncAt" | "lastCommit" | "lastError" | "failStreak">>
+
+export interface Persona {
+  id: number
+  name: string
+  /** Instructions added to the system prompt: character, tone, language, house rules. */
+  prompt: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** `off`: no memory. `explicit`: only saves when asked to. `auto`: may also save lasting facts on its own. */
+export type MemoryMode = "off" | "explicit" | "auto"
+export const MEMORY_MODES: readonly MemoryMode[] = ["off", "explicit", "auto"]
+
+export interface Person {
+  /** Telegram user ID. */
+  id: number
+  name: string | null
+  username: string | null
+  /** `null` uses the default persona. */
+  personaId: number | null
+  /** `null` uses the default mode. */
+  memoryMode: MemoryMode | null
+  seenAt: number | null
+}
+
+export interface Memory {
+  id: number
+  userId: number
+  text: string
+  /** Who wrote it: the agent, the user through a command, or the admin UI. */
+  source: "agent" | "user" | "admin"
+  createdAt: number
+  updatedAt: number
+}
 
 export type ScheduleKind = "cron" | "interval" | "once"
 /** `prompt` sends a prompt to the agent; `command` runs a shell command in the workspace. */
@@ -162,6 +199,31 @@ export class Store {
       enabled INTEGER NOT NULL,
       PRIMARY KEY (source_id, skill_id)
     )`)
+    this.db.run(`CREATE TABLE IF NOT EXISTS personas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      prompt TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`)
+    this.db.run(`CREATE TABLE IF NOT EXISTS people (
+      user_id INTEGER PRIMARY KEY,
+      name TEXT,
+      username TEXT,
+      persona_id INTEGER REFERENCES personas(id) ON DELETE SET NULL,
+      memory_mode TEXT,
+      seen_at INTEGER
+    )`)
+    this.db.run(`CREATE TABLE IF NOT EXISTS memories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      source TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`)
+    this.db.run("CREATE INDEX IF NOT EXISTS memories_by_user ON memories (user_id, id)")
+    if (!this.columns("threads").some((c) => c.name === "user_id")) this.db.run("ALTER TABLE threads ADD COLUMN user_id INTEGER")
     this.db.run("PRAGMA foreign_keys = ON")
     this.migrateChats()
   }
@@ -219,6 +281,16 @@ export class Store {
     return row ? toState(row) : undefined
   }
 
+  /** A user's conversations: threads they last wrote in, plus their private chat's threads nobody has written in yet. */
+  threadsOf(userId: number, limit = 100): ChatState[] {
+    return this.db
+      .query<Row, [number, number, number]>(
+        "SELECT * FROM threads WHERE user_id = ? OR (user_id IS NULL AND chat_id = ?) ORDER BY updated_at DESC LIMIT ?",
+      )
+      .all(userId, userId, limit)
+      .map(toState)
+  }
+
   bySession(sessionID: string): ChatState | undefined {
     const row = this.db.query<Row, [string]>("SELECT * FROM threads WHERE session_id = ?").get(sessionID)
     return row ? toState(row) : undefined
@@ -246,10 +318,14 @@ export class Store {
     this.db.query("UPDATE threads SET auto_title = 0 WHERE chat_id = ? AND thread_id = ?").run(key.chatId, key.threadId)
   }
 
-  touch(key: ChatKey): void {
-    this.db
-      .query("UPDATE threads SET updated_at = ? WHERE chat_id = ? AND thread_id = ?")
-      .run(Date.now(), key.chatId, key.threadId)
+  /** Mark a thread as used, optionally by `userId`, who becomes the person the session talks to. */
+  touch(key: ChatKey, userId?: number): void {
+    if (userId === undefined)
+      this.db.query("UPDATE threads SET updated_at = ? WHERE chat_id = ? AND thread_id = ?").run(Date.now(), key.chatId, key.threadId)
+    else
+      this.db
+        .query("UPDATE threads SET updated_at = ?, user_id = ? WHERE chat_id = ? AND thread_id = ?")
+        .run(Date.now(), userId, key.chatId, key.threadId)
   }
 
   delete(key: ChatKey): void {
@@ -439,6 +515,93 @@ export class Store {
       .run(sourceId, skillId, enabled ? 1 : 0)
   }
 
+  personas(): Persona[] {
+    return this.db.query<PersonaRow, []>("SELECT * FROM personas ORDER BY name COLLATE NOCASE").all().map(toPersona)
+  }
+
+  persona(id: number): Persona | undefined {
+    const row = this.db.query<PersonaRow, [number]>("SELECT * FROM personas WHERE id = ?").get(id)
+    return row ? toPersona(row) : undefined
+  }
+
+  createPersona(name: string, prompt: string, now = Date.now()): Persona {
+    const { id } = this.db
+      .query<{ id: number }, [string, string, number, number]>("INSERT INTO personas (name, prompt, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING id")
+      .get(name, prompt, now, now)!
+    return this.persona(id)!
+  }
+
+  updatePersona(id: number, patch: Partial<Pick<Persona, "name" | "prompt">>, now = Date.now()): Persona | undefined {
+    const current = this.persona(id)
+    if (!current) return undefined
+    this.db
+      .query("UPDATE personas SET name = ?, prompt = ?, updated_at = ? WHERE id = ?")
+      .run(patch.name ?? current.name, patch.prompt ?? current.prompt, now, id)
+    return this.persona(id)
+  }
+
+  deletePersona(id: number): void {
+    this.db.query("DELETE FROM personas WHERE id = ?").run(id)
+  }
+
+  people(): Person[] {
+    return this.db.query<PersonRow, []>("SELECT * FROM people ORDER BY seen_at DESC NULLS LAST, user_id").all().map(toPerson)
+  }
+
+  person(id: number): Person | undefined {
+    const row = this.db.query<PersonRow, [number]>("SELECT * FROM people WHERE user_id = ?").get(id)
+    return row ? toPerson(row) : undefined
+  }
+
+  /** Record that a Telegram user sent a message, keeping their display name current. */
+  seePerson(id: number, name: string | null, username: string | null, now = Date.now()): void {
+    this.db
+      .query(
+        `INSERT INTO people (user_id, name, username, seen_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET name = excluded.name, username = excluded.username, seen_at = excluded.seen_at`,
+      )
+      .run(id, name, username, now)
+  }
+
+  updatePerson(id: number, patch: Partial<Pick<Person, "personaId" | "memoryMode">>): Person {
+    this.db.query("INSERT OR IGNORE INTO people (user_id) VALUES (?)").run(id)
+    if (patch.personaId !== undefined) this.db.query("UPDATE people SET persona_id = ? WHERE user_id = ?").run(patch.personaId, id)
+    if (patch.memoryMode !== undefined) this.db.query("UPDATE people SET memory_mode = ? WHERE user_id = ?").run(patch.memoryMode, id)
+    return this.person(id)!
+  }
+
+  memories(userId: number): Memory[] {
+    return this.db.query<MemoryRow, [number]>("SELECT * FROM memories WHERE user_id = ? ORDER BY id").all(userId).map(toMemory)
+  }
+
+  memory(id: number): Memory | undefined {
+    const row = this.db.query<MemoryRow, [number]>("SELECT * FROM memories WHERE id = ?").get(id)
+    return row ? toMemory(row) : undefined
+  }
+
+  addMemory(userId: number, text: string, source: Memory["source"], now = Date.now()): Memory {
+    const { id } = this.db
+      .query<{ id: number }, [number, string, string, number, number]>(
+        "INSERT INTO memories (user_id, text, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
+      )
+      .get(userId, text, source, now, now)!
+    return this.memory(id)!
+  }
+
+  updateMemory(id: number, text: string, now = Date.now()): Memory | undefined {
+    this.db.query("UPDATE memories SET text = ?, updated_at = ? WHERE id = ?").run(text, now, id)
+    return this.memory(id)
+  }
+
+  deleteMemory(id: number): void {
+    this.db.query("DELETE FROM memories WHERE id = ?").run(id)
+  }
+
+  /** Forget everything about a user. Returns how many memories were removed. */
+  clearMemories(userId: number): number {
+    return this.db.query("DELETE FROM memories WHERE user_id = ?").run(userId).changes
+  }
+
   /** Runs left "running" by a previous process that stopped mid-run. */
   abandonRuns(now = Date.now()): void {
     this.db
@@ -451,13 +614,14 @@ export class Store {
   }
 }
 
-type Row = { chat_id: number; thread_id: number; session_id: string; auto_title: number; updated_at: number }
+type Row = { chat_id: number; thread_id: number; session_id: string; auto_title: number; updated_at: number; user_id: number | null }
 
 function toState(row: Row): ChatState {
   return {
     chatId: row.chat_id,
     threadId: row.thread_id,
     sessionID: row.session_id,
+    userId: row.user_id ?? null,
     autoTitle: row.auto_title === 1,
     updatedAt: row.updated_at,
   }
@@ -572,4 +736,23 @@ function toRun(r: RunRow): ScheduleRun {
     error: r.error,
     output: r.output,
   }
+}
+
+type PersonaRow = { id: number; name: string; prompt: string; created_at: number; updated_at: number }
+
+function toPersona(r: PersonaRow): Persona {
+  return { id: r.id, name: r.name, prompt: r.prompt, createdAt: r.created_at, updatedAt: r.updated_at }
+}
+
+type PersonRow = { user_id: number; name: string | null; username: string | null; persona_id: number | null; memory_mode: string | null; seen_at: number | null }
+
+function toPerson(r: PersonRow): Person {
+  const mode = MEMORY_MODES.find((m) => m === r.memory_mode) ?? null
+  return { id: r.user_id, name: r.name, username: r.username, personaId: r.persona_id, memoryMode: mode, seenAt: r.seen_at }
+}
+
+type MemoryRow = { id: number; user_id: number; text: string; source: Memory["source"]; created_at: number; updated_at: number }
+
+function toMemory(r: MemoryRow): Memory {
+  return { id: r.id, userId: r.user_id, text: r.text, source: r.source, createdAt: r.created_at, updatedAt: r.updated_at }
 }

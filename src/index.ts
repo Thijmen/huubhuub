@@ -11,12 +11,14 @@ import { GitHubAccess } from "./github-access"
 import { GitHubApp } from "./github-app"
 import { InternalApi } from "./internal"
 import { Bridge } from "./opencode"
+import { Personas } from "./personas"
 import { Questions, trackForms } from "./question"
 import { scheduleCommands } from "./schedule-commands"
 import { ScheduleRunner } from "./schedule-runner"
 import { ScheduleService } from "./schedule-service"
 import { Scheduler } from "./scheduler"
 import { Settings } from "./settings"
+import { personaCommands } from "./persona-commands"
 import { skillCommands } from "./skill-commands"
 import { SkillSources } from "./skills"
 import { Store } from "./store"
@@ -28,6 +30,8 @@ mkdirSync(config.WORKSPACE_DIR, { recursive: true })
 const store = new Store(config.DATA_DIR)
 const settings = new Settings(config, store)
 settings.load()
+const personas = new Personas(store, () => config.SCHEDULE_TIMEZONE)
+personas.seed()
 
 // The agent's processes reach back to the bot through this; it has to exist before OpenCode starts.
 const internal = new InternalApi()
@@ -90,11 +94,12 @@ const bot = createBot(
   (b, c) => {
     scheduleCommands({ bridge, store, scheduler, timeZone })(b, c)
     skillCommands({ skills, timeZone })(b)
+    personaCommands({ store, personas })(b)
   },
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 const schedules = new ScheduleService(store, scheduler, bridge, timeZone)
-internal.attach({ github: githubAccess, schedules: new AgentSchedules(store, schedules, scheduler, bridge, timeZone) })
+internal.attach({ github: githubAccess, schedules: new AgentSchedules(store, schedules, scheduler, bridge, timeZone), personas })
 
 skills.onAlert = (html) => {
   for (const id of config.ALLOWED_USER_IDS) {
@@ -112,6 +117,8 @@ await bot.api.setMyCommands([
   { command: "schedule", description: "Run a prompt or command on a schedule" },
   { command: "schedules", description: "Manage scheduled tasks" },
   { command: "skills", description: "List loaded skills" },
+  { command: "persona", description: "Pick who the bot is for you" },
+  { command: "memory", description: "What the bot remembers about you" },
   { command: "help", description: "Show help" },
 ])
 
@@ -119,7 +126,7 @@ scheduler.start()
 skills.start()
 console.log(`Scheduler running (${store.schedules().length} jobs, time zone ${config.SCHEDULE_TIMEZONE})`)
 
-const admin = startAdmin({ config, bridge, store, settings, bot, chats, scheduler, schedules, skills, github, githubAccess, token: adminToken() })
+const admin = startAdmin({ config, bridge, store, settings, personas, bot, chats, scheduler, schedules, skills, github, githubAccess, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
 
 function adminToken(): string {
