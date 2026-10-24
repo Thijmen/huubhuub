@@ -53,7 +53,7 @@ describe("GitHubApp", () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  test("builds a read-only manifest that returns to the admin origin", () => {
+  test("builds a manifest that asks for code, PR and issue access and returns to the admin origin", () => {
     const { action, manifest } = app.startManifest("https://bot.example.com/#skills", "my-app", "acme")
     expect(action).toStartWith("https://github.com/organizations/acme/settings/apps/new?state=")
     expect(manifest).toMatchObject({
@@ -61,7 +61,7 @@ describe("GitHubApp", () => {
       redirect_url: "https://bot.example.com/?github=created",
       setup_url: "https://bot.example.com/?github=installed",
       public: false,
-      default_permissions: { contents: "read", metadata: "read" },
+      default_permissions: { contents: "write", pull_requests: "write", issues: "write", metadata: "read" },
     })
     expect(manifest).not.toHaveProperty("hook_attributes")
     expect(app.startManifest("http://localhost:8080").action).toStartWith("https://github.com/settings/apps/new?state=")
@@ -101,6 +101,42 @@ describe("GitHubApp", () => {
     now += 6 * 60_000
     expect(await app.token(7)).toBe("tok-2")
     expect(calls.at(-1)!.auth).toStartWith("Bearer ey")
+  })
+
+  test("asks for a fresh token when the cached one won't last long enough", async () => {
+    await connect()
+    routes["POST /app/installations/7/access_tokens"] = (n) => [201, { token: `tok-${n}`, expires_at: new Date(now + 60 * 60_000).toISOString() }]
+    expect(await app.token(7)).toBe("tok-1")
+    now += 45 * 60_000
+    expect(await app.token(7)).toBe("tok-1")
+    expect(await app.token(7, 20 * 60_000)).toBe("tok-2")
+  })
+
+  test("lists installations with their accounts and permissions, cached for a minute", async () => {
+    await connect()
+    routes["GET /app/installations?per_page=100"] = () => [
+      200,
+      [
+        { id: 7, account: { login: "Thijmen", type: "User" }, permissions: { contents: "read" }, repository_selection: "selected", html_url: "https://github.com/settings/installations/7", suspended_at: null },
+        { id: 8, account: { login: "acme", type: "Organization" }, permissions: {}, repository_selection: "all", html_url: "https://github.com/organizations/acme/settings/installations/8", suspended_at: "2026-01-01T00:00:00Z" },
+      ],
+    ]
+    const list = await app.installations()
+    expect(list.map((i) => [i.id, i.account, i.accountType, i.suspended])).toEqual([
+      [7, "Thijmen", "User", false],
+      [8, "acme", "Organization", true],
+    ])
+    await app.installations()
+    expect(calls.filter((c) => c.url.endsWith("/app/installations?per_page=100"))).toHaveLength(1)
+    now += 61_000
+    await app.installations()
+    expect(calls.filter((c) => c.url.endsWith("/app/installations?per_page=100"))).toHaveLength(2)
+  })
+
+  test("commits are authored as the app's bot user", async () => {
+    await connect()
+    routes["GET /users/huub-skills-x%5Bbot%5D"] = () => [200, { id: 999 }]
+    expect(await app.identity()).toEqual({ name: "huub-skills-x[bot]", email: "999+huub-skills-x[bot]@users.noreply.github.com" })
   })
 
   test("finds installations and lists their repos", async () => {

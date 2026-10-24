@@ -7,47 +7,99 @@ import type { Questions } from "./question"
 import { Reply } from "./reply"
 import { formatTime } from "./schedule-spec"
 import type { RunOutcome, Runner } from "./scheduler"
+import { runCommand, type CommandResult } from "./shell-task"
 import type { ChatKey, Schedule } from "./store"
 
 export const SILENT = "[SILENT]"
 const SILENT_HINT = `\n\n(This is a scheduled job. If there is nothing worth reporting, reply with exactly ${SILENT} and nothing else.)`
+export const COMMAND_TIMEOUT_MS = 15 * 60_000
+/** How much pre-check output is handed to the agent. */
+const PRECHECK_MAX = 20_000
+const TELEGRAM_OUTPUT_MAX = 3500
 
-/** Runs a scheduled prompt in a fresh session and reports it in Telegram. */
+export interface RunnerDeps {
+  api: Api
+  bridge: Bridge
+  chats: Chats
+  questions: Questions
+  timeZone: () => string
+  /** Who hears about background jobs. */
+  allowedUsers: () => number[]
+  workspace: string
+  /** The environment commands run with: the agent's, plus a GitHub token when the app is connected. */
+  commandEnv: () => Promise<Record<string, string | undefined>>
+}
+
+/** Runs scheduled tasks: prompts in a fresh session, or shell commands in the workspace. Reports them in Telegram unless they run in the background. */
 export class ScheduleRunner implements Runner {
-  constructor(
-    private readonly api: Api,
-    private readonly bridge: Bridge,
-    private readonly chats: Chats,
-    private readonly questions: Questions,
-    private readonly timeZone: () => string,
-  ) {}
+  constructor(private readonly d: RunnerDeps) {}
 
-  notify(chatId: number, html: string): Promise<void> {
-    return this.api.sendMessage(chatId, html, { parse_mode: "HTML" }).then(() => undefined)
+  async notify(chatId: number | null, html: string): Promise<void> {
+    const targets = chatId === null ? this.d.allowedUsers() : [chatId]
+    for (const id of targets) {
+      await this.d.api.sendMessage(id, html, { parse_mode: "HTML" }).catch((err) => {
+        if (chatId !== null) throw err
+        console.error(`Couldn't notify ${id} about a background job`, err)
+      })
+    }
   }
 
-  async start(s: Schedule, startedAt: number): Promise<{ sessionID: string; done: Promise<RunOutcome> }> {
+  async start(s: Schedule, startedAt: number): Promise<{ sessionID: string | null; done: Promise<RunOutcome> }> {
+    if (s.type === "command") return { sessionID: null, done: this.runCommandTask(s, s.command ?? "") }
+    let prompt = s.prompt
+    if (s.command) {
+      const pre = await this.exec(s.command)
+      if (failed(pre)) return { sessionID: null, done: Promise.resolve({ status: "failed", error: `The pre-check ${failure(pre)}.`, output: pre.output }) }
+      if (!pre.output.trim()) return { sessionID: null, done: Promise.resolve({ status: "silent", output: "" }) }
+      prompt = withPrecheck(s.prompt, s.command, pre.output)
+    }
+    return this.startPrompt(s, startedAt, prompt)
+  }
+
+  private exec(command: string): Promise<CommandResult> {
+    return this.d.commandEnv().then((env) => runCommand(command, { cwd: this.d.workspace, env, timeoutMs: COMMAND_TIMEOUT_MS }))
+  }
+
+  private async runCommandTask(s: Schedule, command: string): Promise<RunOutcome> {
+    const r = await this.exec(command)
+    const outcome: RunOutcome = failed(r) ? { status: "failed", error: `The command ${failure(r)}.`, output: r.output } : { status: "ok", output: r.output }
+    if (s.chatId === null) return outcome
+    if (s.silent && outcome.status === "ok" && !r.output.trim()) return { ...outcome, status: "silent" }
+    await this.d.api
+      .sendMessage(s.chatId, commandReport(s, r), { parse_mode: "HTML", link_preview_options: { is_disabled: true } })
+      .catch((err) => console.error(`Couldn't post the output of scheduled command ${s.id}`, err))
+    return outcome
+  }
+
+  private async startPrompt(s: Schedule, startedAt: number, prompt: string): Promise<{ sessionID: string; done: Promise<RunOutcome> }> {
+    const { bridge, questions } = this.d
     const carry = { ...(s.model ? { model: parseModelRef(s.model) } : {}), ...(s.agent ? { agent: s.agent } : {}) }
-    const sessionID = await this.bridge.createDetached(carry, { telegramChatId: s.chatId, scheduleId: s.id })
-    const title = `⏰ ${s.name} · ${formatTime(startedAt, this.timeZone(), startedAt)}`
-    const intro = `⏰ <b>${escape(s.name)}</b>\n<i>${escape(truncate(s.prompt, 500))}</i>`
-    const surface = (preface?: (key: ChatKey) => Promise<void>) => this.chats.openScheduled(s.chatId, title, sessionID, intro, preface)
+    const chatId = s.chatId
+    const sessionID = await bridge.createDetached(carry, { ...(chatId !== null ? { telegramChatId: chatId } : {}), scheduleId: s.id })
+    const run = new RunWatch(bridge, questions, sessionID)
+    const silent = chatId !== null && s.silent
 
-    const run = new RunWatch(this.bridge, this.questions, sessionID)
-    if (!s.silent) await surface()
-    else run.onQuestion(() => void this.reveal(surface, run, ""))
+    let surface: ((preface?: (key: ChatKey) => Promise<void>) => Promise<ChatKey>) | undefined
+    if (chatId !== null) {
+      const title = `⏰ ${s.name} · ${formatTime(startedAt, this.d.timeZone(), startedAt)}`
+      const intro = `⏰ <b>${escape(s.name)}</b>\n<i>${escape(truncate(s.prompt, 500))}</i>`
+      surface = (preface) => this.d.chats.openScheduled(chatId, title, sessionID, intro, preface)
+      if (!silent) await surface()
+      else run.onQuestion(() => void this.reveal(surface!, run, ""))
+    }
 
-    await this.bridge.prompt(sessionID, s.silent ? s.prompt + SILENT_HINT : s.prompt).catch((err) => {
+    await bridge.prompt(sessionID, silent ? prompt + SILENT_HINT : prompt).catch((err) => {
       run.dispose()
       throw err
     })
 
-    const done = run.finished.then(async (outcome) => {
+    const done = run.finished.then(async (outcome): Promise<RunOutcome> => {
       run.dispose()
-      if (!s.silent || run.revealed) return outcome
-      if (outcome.status === "ok" && run.lastText().trim() === SILENT) return { status: "silent" } satisfies RunOutcome
-      await this.reveal(surface, run, outcome.status === "failed" ? `⚠️ ${truncate(outcome.error ?? "The run failed.", 500)}` : "")
-      return outcome
+      const output = run.text()
+      if (!silent || run.revealed) return { ...outcome, output }
+      if (outcome.status === "ok" && run.lastText().trim() === SILENT) return { status: "silent", output }
+      await this.reveal(surface!, run, outcome.status === "failed" ? `⚠️ ${truncate(outcome.error ?? "The run failed.", 500)}` : "")
+      return { ...outcome, output }
     })
     return { sessionID, done }
   }
@@ -57,8 +109,30 @@ export class ScheduleRunner implements Runner {
     if (run.revealed) return
     run.revealed = true
     const body = [run.text(), footer].filter(Boolean).join("\n\n")
-    await surface(body ? (key) => new Reply(this.api, key).update(body) : undefined)
+    await surface(body ? (key) => new Reply(this.d.api, key).update(body) : undefined)
   }
+}
+
+function failed(r: CommandResult): boolean {
+  return r.timedOut || r.exitCode !== 0
+}
+
+function failure(r: CommandResult): string {
+  if (r.timedOut) return `timed out after ${COMMAND_TIMEOUT_MS / 60_000} minutes`
+  return r.exitCode === null ? "was killed" : `exited with code ${r.exitCode}`
+}
+
+/** The prompt a pre-checked task sends: the user's prompt, then what the check printed. */
+export function withPrecheck(prompt: string, command: string, output: string): string {
+  const text = output.length > PRECHECK_MAX ? `…${output.slice(-PRECHECK_MAX)}` : output
+  return `${prompt}\n\nOutput of \`${command}\`:\n\`\`\`\n${text.trimEnd()}\n\`\`\``
+}
+
+export function commandReport(s: Schedule, r: CommandResult): string {
+  const status = r.timedOut ? "⏱ timed out" : r.exitCode === 0 ? "✅" : r.exitCode === null ? "⚠️ killed" : `⚠️ exit ${r.exitCode}`
+  const out = r.output.trim()
+  const shown = out.length > TELEGRAM_OUTPUT_MAX ? `…${out.slice(-TELEGRAM_OUTPUT_MAX)}` : out
+  return `⚙️ <b>${escape(s.name)}</b> ${status}\n${shown ? `<pre>${escape(shown)}</pre>` : "<i>No output.</i>"}`
 }
 
 /** Follows one session until its execution ends, keeping the text it produced. */

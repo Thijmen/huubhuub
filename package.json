@@ -10,6 +10,7 @@
     "test": "bun test"
   },
   "devDependencies": {
+    "@opencode/plugin": "2.1.4",
     "@types/bun": "latest",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0"
@@ -20,10 +21,14 @@
   "dependencies": {
     "@aws-sdk/client-transcribe-streaming": "^3.1141.0",
     "@grammyjs/auto-retry": "^2.0.2",
-    "@opencode/sdk": "^2.0.18",
+    "@opencode/cli": "2.1.4",
+    "@opencode/client": "2.1.4",
     "grammy": "^1.46.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"
-  }
+  },
+  "trustedDependencies": [
+    "@opencode/cli"
+  ]
 }

@@ -229,6 +229,23 @@ nav {
   opacity: 1;
 }
 
+.nav-item:disabled {
+  cursor: progress;
+}
+
+.nav-trail {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.nav-external {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  padding-top: 13px;
+}
+
 .sidebar-foot {
   margin-top: auto;
   padding: 0 4px;
@@ -314,6 +331,15 @@ nav {
 
 .card > h3 {
   margin-bottom: 14px;
+}
+
+.opencode-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 12px;
+  font-size: 13px;
 }
 
 .grid-2 {
@@ -1989,6 +2015,11 @@ kbd {
   .nav-item.active::before {
     display: none;
   }
+  .nav-external {
+    margin-top: 0;
+    border-top: 0;
+    padding-top: 9px;
+  }
   .main {
     height: auto;
   }
@@ -2978,4 +3009,56 @@ pre.plain {
 
 .error-text {
   color: var(--error);
+}
+
+.schedule-command,
+.schedule-output {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.schedule-command {
+  max-height: 7.5em;
+  overflow: hidden;
+}
+
+.schedule-output {
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* GitHub */
+
+.gh-callout-text {
+  margin: 4px 0 0;
+}
+
+.gh-installs-head {
+  padding: 16px 20px 0;
+  flex-wrap: wrap;
+}
+
+.gh-agent {
+  gap: 10px;
+}
+
+.gh-notes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gh-skills-hint {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
