@@ -1,6 +1,6 @@
 # OpenCode Telegram bot
 
-A Telegram bot that uses an embedded [OpenCode V2](https://opencode.ai/v2/docs/) host as its AI backend. Each conversation gets its own Telegram thread and its own persistent OpenCode session. Replies stream in live (as a Telegram draft with a stop button in private chats, as message edits in groups), with short status lines for tool calls. A web admin UI manages providers, API keys, MCP servers and settings.
+A Telegram bot that uses an [OpenCode V2](https://opencode.ai/v2/docs/) server as its AI backend. Each conversation gets its own Telegram thread and its own persistent OpenCode session. Replies stream in live (as a Telegram draft with a stop button in private chats, as message edits in groups), with short status lines for tool calls. A web admin UI manages providers, API keys, MCP servers and settings.
 
 - **Text**: sent to OpenCode as a prompt. Messages sent mid-run are queued.
 - **Images and files**: PNG, JPEG, GIF, WebP, and UTF-8 text files are forwarded as attachments. Images need a model with image input.
@@ -9,13 +9,13 @@ A Telegram bot that uses an embedded [OpenCode V2](https://opencode.ai/v2/docs/)
 - **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/schedule`, `/schedules`, `/skills`, `/whoami`, `/help`
 - **Skills**: pull `SKILL.md` skills from (private) GitHub repos through a GitHub App, managed in the admin UI. See [Skills](#skills).
 - **Allowlist**: only the Telegram user IDs in `ALLOWED_USER_IDS`, or those added in the admin UI, can use the bot.
-- **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, and read and reply to conversations live. See [Admin UI](#admin-ui).
+- **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, and read and reply to conversations live, and open the OpenCode web UI for debugging. See [Admin UI](#admin-ui).
 
 ## Architecture
 
 ```
 Telegram ──long polling──▶ grammY bot (Bun)
-                              ├─ @opencode/sdk   embedded OpenCode host (no HTTP listener)
+                              ├─ opencode serve  child process: OpenCode API + web UI on :4196
                               │    └─ /workspace  the agent's working directory
                               ├─ Amazon Transcribe Streaming (voice → text)
                               ├─ Bun.serve :8080 admin UI (React) + JSON API
@@ -26,7 +26,8 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | --- | --- |
 | `src/index.ts` | Startup and graceful shutdown |
 | `src/config.ts` | Validates environment variables |
-| `src/opencode.ts` | `Bridge`: the embedded host, sessions, and event fan-out |
+| `src/opencode.ts` | `Bridge`: the OpenCode client, sessions, and event fan-out |
+| `src/opencode-server.ts` | Runs and supervises `opencode serve`, and issues web UI sign-in links |
 | `src/stream.ts` | `ChatView`: turns session events into one live Telegram reply |
 | `src/reply.ts` | Edits, splitting over 4096 characters, and the typing indicator |
 | `src/chats.ts` | Thread routing, plus text, photo, document, and voice handlers |
@@ -59,7 +60,7 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-`./workspace` is mounted as the agent's working directory. Put repositories there, or let the agent clone them. Session state lives in the `bot-data` volume and survives restarts.
+`./workspace` is mounted as the agent's working directory. Put repositories there, or let the agent clone them. Session state lives in the `bot-data` volume and survives restarts. Port `4196` serves the OpenCode web UI and is bound to `127.0.0.1`, like the admin UI.
 
 ### Local
 
@@ -128,13 +129,23 @@ The admin UI's **Skills** page loads [agent skills](https://opencode.ai/docs/ski
 The bot serves an admin UI on `ADMIN_PORT` (default `8080`). Sign in with `ADMIN_TOKEN`. If you don't set one, the bot generates a token, stores it in `/data`, and prints it at startup.
 
 - **Providers**: search all integrations OpenCode knows about. Paste an API key, run the OAuth/device-code sign-in, switch between or remove stored credentials, or set the provider's env var.
-- **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. Models appear straight away, without a restart.
+- **Paste env**: paste a `.env` file, a JSON object or bare keys (recognised by prefix, e.g. `sk-ant-…`). The preview shows where each value goes. A key that belongs to one provider is saved in OpenCode's credential store. Anything else becomes a managed env var, stored in SQLite and exported to the process. OpenCode then restarts (about a second) to pick it up, and running turns resume.
 - **Skills**: connect a GitHub App, add the repos it's installed on, toggle skills, and sync. See [Skills](#skills).
 - **MCP servers**: add local (command) or remote (URL) servers, paste Claude Desktop / Cursor / OpenCode JSON, enable/disable, reconnect, edit or remove. Changes apply live and are replayed at startup, including removing servers that come from `bot.opencode.jsonc`.
 - **Settings**: default model and agent, the Telegram allowlist, thread mode, the question timeout, the schedule time zone and the skill sync interval. Values set here override the environment. "Reset" goes back to the env value.
+- **OpenCode** (in the sidebar, plus a card on Overview): opens the real OpenCode web UI in a new tab, signed in with a one-time link. It shows the bot's sessions, the workspace files and a terminal, which helps when debugging. The card shows whether the server is running, its version, and any crash restarts.
 - **Conversations**: every thread, live. It streams replies, tool calls and reasoning, with per-turn tokens and cost. You can reply, stop a run, switch model or agent, or start a new topic from the portal. Portal messages are mirrored into Telegram with a 💻 tag, so the reply shows up in both places.
 
 The admin UI can install credentials and run commands through MCP, so treat the token like a root password. `docker-compose.yml` binds the port to `127.0.0.1`. Put a TLS reverse proxy in front before exposing it anywhere else.
+
+### OpenCode server
+
+The bot runs OpenCode as an `opencode serve` child process from the pinned `@opencode/cli` package, on `OPENCODE_PORT` (default `4196`). Sessions are stored in `/data/opencode.sqlite`. If the server crashes, the bot restarts it with backoff and replays the MCP overrides.
+
+- The web UI and API are password protected: `OPENCODE_SERVER_PASSWORD`, or a generated password stored in `/data`. The admin UI's sign-in links mean you don't normally need it. A signed-in browser stays signed in for 30 days.
+- Sign-in links point at the admin's host on `OPENCODE_PORT`. Behind a reverse proxy, give OpenCode its own origin (it can't be served from a sub-path) and set `OPENCODE_PUBLIC_URL`.
+- To attach the TUI to the bot's server, run `opencode --server http://localhost:4196` and sign in as user `opencode` with the server password.
+- The web UI acts on the real sessions. Prompting a bot session from there runs it for real, and the reply may also show up in Telegram.
 
 ## Notes
 

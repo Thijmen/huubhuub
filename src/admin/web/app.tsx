@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { api, auth, setUnauthorisedHandler } from "./api"
+import { api, auth, openOpenCode, setUnauthorisedHandler } from "./api"
 import { McpPage } from "./pages/mcp"
 import { EnvPage } from "./pages/env"
 import { OverviewPage } from "./pages/overview"
@@ -9,7 +9,7 @@ import { SchedulesPage } from "./pages/schedules"
 import { SettingsPage } from "./pages/settings"
 import { SkillsPage } from "./pages/skills"
 import { ThreadsPage } from "./pages/threads"
-import { Button, ToastProvider } from "./ui"
+import { Button, ToastProvider, useAction } from "./ui"
 
 const TABS = [
   { id: "overview", label: "Overview", icon: "◎" },
@@ -92,6 +92,7 @@ function App() {
               {t.label}
             </button>
           ))}
+          <OpenCodeLink />
         </nav>
         <div className="sidebar-foot">
           <Button
@@ -119,6 +120,17 @@ function App() {
         </div>
       </main>
     </div>
+  )
+}
+
+function OpenCodeLink() {
+  const { busy, run } = useAction()
+  return (
+    <button className="nav-item nav-external" disabled={!!busy} onClick={() => void run("open", openOpenCode)} title="Open the OpenCode web UI in a new tab">
+      <span className="nav-icon">{busy ? <span className="spinner" /> : "◈"}</span>
+      OpenCode
+      <span className="nav-trail">↗</span>
+    </button>
   )
 }
 

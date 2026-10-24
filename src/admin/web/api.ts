@@ -37,6 +37,21 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 
 export const enc = encodeURIComponent
 
+/** Open the OpenCode web UI in a new tab, signed in through a one-time pairing link. */
+export async function openOpenCode(): Promise<void> {
+  // Open the tab during the click so popup blockers allow it, then point it at the link once we have one.
+  const tab = window.open("", "_blank")
+  if (tab) tab.opener = null
+  try {
+    const { url } = await api<{ url: string }>("POST", "/api/opencode/pair")
+    if (tab) tab.location.href = url
+    else location.href = url
+  } catch (err) {
+    tab?.close()
+    throw err
+  }
+}
+
 /** Read a server-sent event stream with the auth header, which EventSource can't send. */
 export async function stream(path: string, onEvent: (event: string, data: unknown) => void, signal: AbortSignal): Promise<void> {
   const res = await fetch(path, { headers: { authorization: `Bearer ${auth.get()}` }, signal })
@@ -110,6 +125,14 @@ export interface Overview {
 }
 
 export type McpStatus = "connected" | "pending" | "disabled" | "failed" | "needs_auth"
+
+export interface OpenCodeStatus {
+  status: "starting" | "running" | "restarting" | "stopped"
+  version: string | null
+  url: string
+  uptime: number | null
+  restarts: number
+}
 
 export type McpConfig =
   | {

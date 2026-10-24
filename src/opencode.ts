@@ -1,11 +1,13 @@
-import { OpenCode, type OpenCodeEvent } from "@opencode/sdk"
+import type { OpenCodeClient, OpenCodeEvent } from "@opencode/client"
+import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseModelRef, type Config } from "./config"
 import { stripJsonComments } from "./mcp-import"
+import { OpenCodeServer } from "./opencode-server"
 import type { ChatKey, Store } from "./store"
 
-export type Host = Awaited<ReturnType<typeof OpenCode.create>>
+export type Host = OpenCodeClient
 export type SessionEvent =
   | Extract<OpenCodeEvent, { data: { sessionID: string } }>
   | Extract<OpenCodeEvent, { type: "form.created" }>
@@ -31,29 +33,33 @@ export class Bridge {
   private global = new Set<Listener>()
   private resync = new Set<() => void>()
   private abort = new AbortController()
+  readonly host: Host
   private constructor(
-    readonly host: Host,
+    readonly server: OpenCodeServer,
     readonly config: Config,
     private readonly store: Store,
-  ) {}
+  ) {
+    this.host = server.client
+  }
 
   /** `skillDirs` are added to the config's `skills` paths; OpenCode watches them and reloads on change. */
   static async start(config: Config, store: Store, skillDirs: string[] = []): Promise<Bridge> {
-    const host = await OpenCode.create({
-      app: { name: "telegram-bot" },
-      database: { path: join(config.DATA_DIR, "opencode.sqlite") },
-      config: { content: configContent(skillDirs) },
-      log: {
-        level: config.OPENCODE_LOG_LEVEL,
-        emit: (e) => console.error(`[opencode:${e.level}] ${e.message}`, e.attributes ?? "", e.cause ?? ""),
-      },
-    })
-    const bridge = new Bridge(host, config, store)
-    await bridge.warmup()
-    await bridge.applyMcpOverrides()
+    const server = new OpenCodeServer(config, serverPassword(config, store), configContent(skillDirs))
+    const bridge = new Bridge(server, config, store)
+    // MCP overrides live in the server's memory, so every (re)start replays them.
+    server.onReady = async () => {
+      await bridge.warmup()
+      await bridge.applyMcpOverrides()
+    }
+    await server.start()
     await bridge.checkDefaultModel()
     void bridge.pump()
     return bridge
+  }
+
+  /** Restart OpenCode so it sees the current environment. Running turns resume after the restart. */
+  restart(): Promise<void> {
+    return this.server.restart()
   }
 
   private async checkDefaultModel(): Promise<void> {
@@ -98,7 +104,7 @@ export class Bridge {
     let reconnect = false
     while (!this.abort.signal.aborted) {
       try {
-        for await (const event of this.host.events.subscribe({ signal: this.abort.signal })) {
+        for await (const event of this.host.event.subscribe({ signal: this.abort.signal })) {
           // Events emitted while the stream was down are not replayed; let views catch up from storage.
           if (reconnect) for (const fn of this.resync) fn()
           reconnect = false
@@ -114,7 +120,8 @@ export class Bridge {
         }
       } catch (err) {
         if (this.abort.signal.aborted) return
-        console.error("event stream failed, resubscribing", err)
+        // Expected while OpenCode restarts; only a drop on a running server is worth a stack trace.
+        if (this.server.status === "running") console.error("event stream failed, resubscribing", err)
       }
       reconnect = true
       await Bun.sleep(1000)
@@ -154,7 +161,7 @@ export class Bridge {
     const model = carry.model ?? (this.config.DEFAULT_MODEL ? parseModelRef(this.config.DEFAULT_MODEL) : undefined)
     const agent = carry.agent ?? this.config.DEFAULT_AGENT
     // Leave the title unset so OpenCode generates one from the first prompt; bot-created topics are renamed to match.
-    const session = await this.host.sessions.create({
+    const session = await this.host.session.create({
       ...this.location,
       metadata,
       ...(model ? { model } : {}),
@@ -190,7 +197,7 @@ export class Bridge {
   }
 
   private async carryFrom(sessionID: string): Promise<Carry> {
-    const info = await this.host.sessions.get({ sessionID }).catch(() => undefined)
+    const info = await this.host.session.get({ sessionID }).catch(() => undefined)
     return {
       model: info?.model ? { providerID: info.model.providerID, id: info.model.id } : undefined,
       agent: info?.agent,
@@ -198,14 +205,14 @@ export class Bridge {
   }
 
   private exists(sessionID: string): Promise<boolean> {
-    return this.host.sessions.get({ sessionID }).then(
+    return this.host.session.get({ sessionID }).then(
       () => true,
       () => false,
     )
   }
 
   prompt(sessionID: string, text: string, files: Attachment[] = []) {
-    return this.host.sessions.prompt({ sessionID, text, files, delivery: "queue" })
+    return this.host.session.prompt({ sessionID, text, files, delivery: "queue" })
   }
 
   /** The assistant output since the latest user message, as stored by OpenCode. */
@@ -221,19 +228,19 @@ export class Bridge {
 
   /** Whether OpenCode is still executing the session. */
   async isActive(sessionID: string): Promise<boolean> {
-    return sessionID in (await this.host.sessions.active())
+    return sessionID in (await this.host.session.active())
   }
 
   replyForm(sessionID: string, formID: string, answer: Record<string, string | string[]>) {
-    return this.host.sessions.form.reply({ sessionID, formID, answer })
+    return this.host.session.form.reply({ sessionID, formID, answer })
   }
 
   interrupt(sessionID: string) {
-    return this.host.sessions.interrupt({ sessionID })
+    return this.host.session.interrupt({ sessionID })
   }
 
   getSession(sessionID: string) {
-    return this.host.sessions.get({ sessionID })
+    return this.host.session.get({ sessionID })
   }
 
   async models() {
@@ -247,16 +254,16 @@ export class Bridge {
   }
 
   switchModel(sessionID: string, model: ModelRef) {
-    return this.host.sessions.switchModel({ sessionID, model })
+    return this.host.session.switchModel({ sessionID, model })
   }
 
   switchAgent(sessionID: string, agent: string) {
-    return this.host.sessions.switchAgent({ sessionID, agent })
+    return this.host.session.switchAgent({ sessionID, agent })
   }
 
   async close(): Promise<void> {
     this.abort.abort()
-    await this.host.close()
+    await this.server.stop()
   }
 }
 
@@ -284,4 +291,15 @@ function configContent(skillDirs: string[]): string {
 
 export function configFile(): string {
   return process.env.OPENCODE_BOT_CONFIG ?? join(import.meta.dir, "..", "bot.opencode.jsonc")
+}
+
+/** OPENCODE_SERVER_PASSWORD, or a generated one kept in SQLite so web UI sign-ins survive restarts. */
+function serverPassword(config: Config, store: Store): string {
+  if (config.OPENCODE_SERVER_PASSWORD) return config.OPENCODE_SERVER_PASSWORD
+  let password = store.getSetting("opencode_password")
+  if (!password) {
+    password = randomBytes(24).toString("base64url")
+    store.setSetting("opencode_password", password)
+  }
+  return password
 }
