@@ -48,7 +48,10 @@ describe("MemoryReview", () => {
   let store: Store
   let personas: Personas
   let sent: { chatId: number; text: string; opts: Record<string, unknown> }[]
-  let prompts: { prompt: string; model?: unknown }[]
+  let prompts: { sessionID: string; prompt: string }[]
+  let created: { title?: string; model?: unknown; permissions?: unknown }[]
+  let sessions: Set<string>
+  let memoryModel: string | undefined
   let answer: string
   let listener: ((e: unknown) => void) | undefined
 
@@ -57,14 +60,32 @@ describe("MemoryReview", () => {
     new MemoryReview({
       bridge: {
         subscribeAll: (fn: (e: unknown) => void) => ((listener = fn), () => (listener = undefined)),
+        location: { location: { directory: "/ws" } },
         selection: async () => ({ model: "opencode/big-pickle", agent: null }),
         host: {
           message: { list: async () => ({ data: messages, cursor: {} }) },
-          generate: { text: async (input: { prompt: string; model?: unknown }) => (prompts.push(input), { text: answer }) },
+          session: {
+            generate: async (input: { sessionID: string; prompt: string }) => {
+              if (!sessions.has(input.sessionID)) throw new Error("Session not found")
+              prompts.push(input)
+              return { text: answer }
+            },
+            get: async ({ sessionID }: { sessionID: string }) => {
+              if (!sessions.has(sessionID)) throw new Error("Session not found")
+              return { id: sessionID }
+            },
+            create: async (input: { title?: string; model?: unknown; permissions?: unknown }) => {
+              created.push(input)
+              const id = `ses_review${created.length}`
+              sessions.add(id)
+              return { id }
+            },
+          },
         },
       } as never,
       store,
       personas,
+      memoryModel: () => memoryModel,
       api: { sendMessage: async (chatId: number, text: string, opts: Record<string, unknown>) => void sent.push({ chatId, text, opts }) } as never,
     })
 
@@ -76,6 +97,9 @@ describe("MemoryReview", () => {
     store.set({ chatId: ME, threadId: 7 }, "ses_dm")
     sent = []
     prompts = []
+    created = []
+    sessions = new Set(["ses_dm", "ses_run"])
+    memoryModel = undefined
     answer = '{"add": ["Is a fan of FC Twente."], "update": []}'
   })
 
@@ -84,15 +108,57 @@ describe("MemoryReview", () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  test("saves what the model finds, in the session's model, and posts it with a Forget button", async () => {
+  test("saves what the model finds, asking the conversation's model in a review session, and posts it with a Forget button", async () => {
     store.updatePerson(ME, { memoryMode: "auto" })
     await review().review("ses_dm")
     expect(store.memories(ME).map((m) => [m.text, m.source])).toEqual([["Is a fan of FC Twente.", "agent"]])
-    expect(prompts[0]!.model).toEqual({ providerID: "opencode", id: "big-pickle" })
+    expect(created.map((c) => c.model)).toEqual([{ providerID: "opencode", id: "big-pickle" }])
+    expect(prompts[0]!.sessionID).toBe("ses_review1")
     expect(sent).toHaveLength(1)
     expect(sent[0]!.text).toContain("Remembered:</i> Is a fan of FC Twente.")
     expect(sent[0]!.opts.message_thread_id).toBe(7)
     expect(JSON.stringify(sent[0]!.opts.reply_markup)).toContain(`mx:${store.memories(ME)[0]!.id}`)
+  })
+
+  test("with a memory model, reviews run in one empty session for that model, kept across restarts", async () => {
+    store.updatePerson(ME, { memoryMode: "auto" })
+    memoryModel = "opencode/glm-5.3-flash-free"
+    const r = review()
+    await r.review("ses_dm")
+    expect(created).toEqual([
+      {
+        location: { directory: "/ws" },
+        title: "Memory review (opencode/glm-5.3-flash-free)",
+        metadata: { purpose: "memory-review" },
+        model: { providerID: "opencode", id: "glm-5.3-flash-free" },
+        permissions: [{ action: "*", resource: "*", effect: "deny" }],
+      } as never,
+    ])
+    expect(prompts.map((p) => p.sessionID)).toEqual(["ses_review1"])
+    expect(store.memories(ME)).toHaveLength(1)
+
+    // A restarted bot finds the same session.
+    store.clearMemories(ME)
+    await review().review("ses_dm")
+    expect(created).toHaveLength(1)
+    expect(prompts.map((p) => p.sessionID)).toEqual(["ses_review1", "ses_review1"])
+  })
+
+  test("makes a new review session when the old one was deleted", async () => {
+    store.updatePerson(ME, { memoryMode: "auto" })
+    memoryModel = "opencode/glm-5.3-flash-free"
+    const r = review()
+    await r.review("ses_dm")
+    sessions.delete("ses_review1")
+    store.clearMemories(ME)
+    messages.unshift(idle("i3"), reply("a3", "Top!"), user("u3", "ik heb een hond"))
+    try {
+      await r.review("ses_dm")
+    } finally {
+      messages.splice(0, 3)
+    }
+    expect(created).toHaveLength(2)
+    expect(prompts.at(-1)!.sessionID).toBe("ses_review2")
   })
 
   test("reviews each turn once", async () => {
