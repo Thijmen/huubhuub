@@ -1,5 +1,6 @@
 import { InlineKeyboard, type Api } from "grammy"
 import { truncate } from "./format"
+import { parseModelRef } from "./config"
 import type { Bridge, SessionEvent } from "./opencode"
 import { displayName, MemoryError, type Personas } from "./personas"
 import { threadParams } from "./reply"
@@ -9,6 +10,8 @@ const DEBOUNCE_MS = 1500
 const MAX_MESSAGES = 12
 const MAX_TEXT = 2000
 const MAX_ADDS = 3
+/** Review session key when the conversation uses OpenCode's default model. */
+const DEFAULT = "default"
 
 type Message = Awaited<ReturnType<Bridge["host"]["message"]["list"]>>["data"][number]
 
@@ -18,23 +21,31 @@ export interface ReviewResult {
 }
 
 /**
- * Automatic memory: after each finished turn in a Telegram conversation with a user in `auto` mode, ask the
- * session's model, in a separate call, whether the user said anything worth remembering. Saves are posted
- * in the thread with a Forget button, so nothing is remembered silently.
+ * Automatic memory: after each finished turn in a Telegram conversation with a user in `auto` mode, ask a
+ * model, in a separate call, whether the user said anything worth remembering. Saves are posted in the
+ * thread with a Forget button, so nothing is remembered silently.
+ *
+ * The call goes through `session.generate` in an empty session the bot keeps per model, which stays out of
+ * the conversation's history and sends only the review prompt: no conversation, tools or agent prompt.
+ * OpenCode's free models refuse calls made outside a session, which rules out `generate.text`.
  */
 export class MemoryReview {
   /** The newest message already reviewed, per session. */
   private reviewed = new Map<string, string>()
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   private running = new Map<string, Promise<void>>()
+  /** The empty session used for reviews with MEMORY_MODEL, per model. */
+  private reviewSessions = new Map<string, Promise<string>>()
   private off?: () => void
 
   constructor(
     private readonly d: {
-      bridge: Pick<Bridge, "subscribeAll" | "selection"> & { host: Pick<Bridge["host"], "message" | "generate"> }
+      bridge: Pick<Bridge, "subscribeAll" | "location" | "selection"> & { host: Pick<Bridge["host"], "message" | "session"> }
       store: Store
       personas: Personas
       api: Pick<Api, "sendMessage">
+      /** `provider/model`, or undefined to use the conversation's model. */
+      memoryModel: () => string | undefined
     },
   ) {}
 
@@ -91,12 +102,50 @@ export class MemoryReview {
 
     const name = displayName(this.d.store.person(userId))
     const existing = this.d.store.memories(userId)
-    const selection = await this.d.bridge.selection(sessionID).catch(() => ({ model: null }))
-    const slash = selection.model?.indexOf("/") ?? -1
-    const model = selection.model && slash > 0 ? { providerID: selection.model.slice(0, slash), id: selection.model.slice(slash + 1) } : undefined
-    const res = await this.d.bridge.host.generate.text({ prompt: reviewPrompt(name, existing, turn), ...(model ? { model } : {}) })
-    const result = parseReview(res.text)
-    await this.apply(sessionID, userId, existing, result)
+    const text = await this.generate(sessionID, reviewPrompt(name, existing, turn))
+    await this.apply(sessionID, userId, existing, parseReview(text))
+  }
+
+  /** Ask in an empty review session for the model: MEMORY_MODEL, else the conversation's. */
+  private async generate(conversation: string, prompt: string): Promise<string> {
+    const { session } = this.d.bridge.host
+    const model = this.d.memoryModel() ?? (await this.d.bridge.selection(conversation).catch(() => ({ model: null }))).model ?? DEFAULT
+    const reviewSession = await this.reviewSession(model)
+    try {
+      return (await session.generate({ sessionID: reviewSession, prompt })).text
+    } catch (err) {
+      // Someone may have deleted the review session; make a new one once.
+      if (await session.get({ sessionID: reviewSession }).then(() => true, () => false)) throw err
+      this.reviewSessions.delete(model)
+      this.d.store.setSetting(reviewSessionKey(model), undefined)
+      return (await session.generate({ sessionID: await this.reviewSession(model), prompt })).text
+    }
+  }
+
+  private reviewSession(model: string): Promise<string> {
+    let pending = this.reviewSessions.get(model)
+    if (!pending) {
+      pending = this.findOrCreateReviewSession(model)
+      pending.catch(() => this.reviewSessions.delete(model))
+      this.reviewSessions.set(model, pending)
+    }
+    return pending
+  }
+
+  private async findOrCreateReviewSession(model: string): Promise<string> {
+    const { session } = this.d.bridge.host
+    const stored = this.d.store.getSetting(reviewSessionKey(model))
+    if (stored && (await session.get({ sessionID: stored }).then(() => true, () => false))) return stored
+    const created = await session.create({
+      ...this.d.bridge.location,
+      title: `Memory review (${model === DEFAULT ? "default model" : model})`,
+      metadata: { purpose: "memory-review" },
+      ...(model === DEFAULT ? {} : { model: parseModelRef(model) }),
+      // Reviews only produce text; the session never needs a tool.
+      permissions: [{ action: "*", resource: "*", effect: "deny" }],
+    })
+    this.d.store.setSetting(reviewSessionKey(model), created.id)
+    return created.id
   }
 
   private async apply(sessionID: string, userId: number, existing: Memory[], result: ReviewResult): Promise<void> {
@@ -133,6 +182,10 @@ export class MemoryReview {
         .catch((err) => console.error("Couldn't post a memory notice", err))
     }
   }
+}
+
+function reviewSessionKey(model: string): string {
+  return `memory_review_session:${model}`
 }
 
 function cleanText(text: string): string {

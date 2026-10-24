@@ -29,6 +29,8 @@ const schema = z.object({
   DATA_DIR: z.string().default(defaultDir("data")).transform((p) => resolve(p)),
   DEFAULT_MODEL: z.string().optional(),
   DEFAULT_AGENT: z.string().optional(),
+  /** The model that reviews replies for things to remember (automatic memory). Unset uses the conversation's model. */
+  MEMORY_MODEL: z.string().optional(),
   THREAD_MODE: z.enum(["auto", "off"]).default("auto"),
   TELEGRAM_STREAMING: z.enum(["draft", "edit"]).default("draft"),
   OPENCODE_LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("warn"),
@@ -54,7 +56,7 @@ const schema = z.object({
 export type Config = z.infer<typeof schema>
 
 /** Settings the admin UI can change at runtime. They are stored in SQLite and override the environment. */
-export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "TELEGRAM_STREAMING", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE", "SKILL_SYNC_INTERVAL_MINUTES"] as const
+export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "MEMORY_MODEL", "ALLOWED_USER_IDS", "THREAD_MODE", "TELEGRAM_STREAMING", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE", "SKILL_SYNC_INTERVAL_MINUTES"] as const
 export type RuntimeSetting = (typeof RUNTIME_SETTINGS)[number]
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -88,6 +90,10 @@ export function applySetting(config: Config, key: RuntimeSetting, value: string 
     case "DEFAULT_MODEL":
       if (raw) parseModelRef(raw)
       config.DEFAULT_MODEL = raw || undefined
+      break
+    case "MEMORY_MODEL":
+      if (raw) parseModelRef(raw)
+      config.MEMORY_MODEL = raw || undefined
       break
     case "DEFAULT_AGENT":
       config.DEFAULT_AGENT = raw || undefined
