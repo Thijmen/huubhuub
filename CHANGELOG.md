@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.0.11
+
+### Patch Changes
+
+- [#24](https://github.com/Thijmen/huubhuub/pull/24) [`c6d61b4`](https://github.com/Thijmen/huubhuub/commit/c6d61b419cfdb50f00653d4df6beba30153eea02) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix the GitHub App not being installable on organizations. New apps are created public so any account you own can install them, and the GitHub page now explains how to make an existing private app public.
+
 ## 0.0.10
 
 ### Patch Changes
