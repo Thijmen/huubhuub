@@ -60,7 +60,7 @@ describe("GitHubApp", () => {
       name: "my-app",
       redirect_url: "https://bot.example.com/?github=created",
       setup_url: "https://bot.example.com/?github=installed",
-      public: false,
+      public: true,
       default_permissions: { contents: "write", pull_requests: "write", issues: "write", metadata: "read" },
     })
     expect(manifest).not.toHaveProperty("hook_attributes")
@@ -72,6 +72,16 @@ describe("GitHubApp", () => {
     expect(info).toMatchObject({ id: 42, slug: "huub-skills-x", owner: "Thijmen", installUrl: "https://github.com/apps/huub-skills-x/installations/new" })
     expect(app.connected()).toBe(true)
     expect(JSON.stringify(app.info())).not.toContain("PRIVATE KEY")
+  })
+
+  test("tells a public app from a private one with an anonymous lookup", async () => {
+    await connect()
+    expect(await app.isPublic()).toBe(false)
+    routes["GET /apps/huub-skills-x"] = () => [200, { slug: "huub-skills-x" }]
+    expect(await app.isPublic()).toBe(true)
+    routes["GET /apps/huub-skills-x"] = () => [404, {}]
+    expect(await app.isPublic()).toBe(true) // a yes is cached
+    expect(calls.filter((c) => c.url.endsWith("/apps/huub-skills-x")).every((c) => !c.auth)).toBe(true)
   })
 
   test("rejects an unknown, reused or expired state", async () => {
