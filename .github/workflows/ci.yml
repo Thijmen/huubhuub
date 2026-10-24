@@ -59,7 +59,7 @@ jobs:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
       - id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2.1.2
         with:
           publish-script: bun run release
           commit-message: "Release huubhuub"
