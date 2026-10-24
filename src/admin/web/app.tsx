@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { api, auth, openOpenCode, setUnauthorisedHandler } from "./api"
+import { CostsPage } from "./pages/costs"
 import { McpPage } from "./pages/mcp"
 import { EnvPage } from "./pages/env"
 import { GitHubPage } from "./pages/github"
@@ -22,6 +23,7 @@ const TABS = [
   { id: "github", label: "GitHub", icon: "⎇" },
   { id: "skills", label: "Skills", icon: "📚" },
   { id: "threads", label: "Conversations", icon: "✦" },
+  { id: "costs", label: "Costs", icon: "$" },
   { id: "personas", label: "Personas", icon: "🎭" },
   { id: "people", label: "People", icon: "☺" },
   { id: "schedules", label: "Schedules", icon: "⏰" },
@@ -123,6 +125,7 @@ function App() {
           {tab === "skills" && <SkillsPage />}
           {tab === "threads" && <ThreadsPage selected={thread} open={openThread} />}
           {tab === "schedules" && <SchedulesPage openThread={(id) => (location.hash = `threads/${encodeURIComponent(id)}`)} />}
+          {tab === "costs" && <CostsPage openThread={(id) => (location.hash = `threads/${encodeURIComponent(id)}`)} />}
           {tab === "personas" && <PersonasPage />}
           {tab === "people" && <PeoplePage />}
           {tab === "settings" && <SettingsPage />}

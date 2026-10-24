@@ -455,3 +455,30 @@ export interface ToolCallsResponse {
   /** Only the latest 1000 messages were scanned. */
   partial: boolean
 }
+
+export type UsageSource = "conversation" | "schedule" | "memory" | "other"
+
+export interface UsageSession {
+  id: string
+  title: string | null
+  source: UsageSource
+  userId: number | null
+  schedule: string | null
+  /** The session to open in the Conversations tab, if it has one. */
+  open: string | null
+  parentID: string | null
+  cost: number
+  created: number
+  updated: number
+}
+
+/** `[hourStart, session index, model index, cost, input, output, reasoning, cacheRead, cacheWrite, turns]` */
+export type UsageRow = [number, number, number, number, number, number, number, number, number, number]
+
+export interface UsageReport {
+  generatedAt: number
+  sessions: UsageSession[]
+  models: string[]
+  people: { id: number; name: string }[]
+  rows: UsageRow[]
+}
