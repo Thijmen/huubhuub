@@ -109,3 +109,5 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+See @AGENTS.md for project rules, including adding a changeset with every change.
