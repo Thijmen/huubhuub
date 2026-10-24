@@ -6,7 +6,8 @@ A Telegram bot that uses an [OpenCode V2](https://opencode.ai/v2/docs/) server a
 - **Images and files**: PNG, JPEG, GIF, WebP, and UTF-8 text files are forwarded as attachments. Images need a model with image input.
 - **Voice notes**: transcribed with Amazon Transcribe Streaming, then sent as a prompt.
 - **Threads**: each new conversation opens its own Telegram topic, named after the session title once OpenCode generates one. See [Threads](#threads).
-- **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/schedule`, `/schedules`, `/skills`, `/whoami`, `/help`
+- **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/schedule`, `/schedules`, `/skills`, `/persona`, `/memory`, `/forget`, `/whoami`, `/help`
+- **Personas and memory**: each Telegram user gets a persona (who the bot is: name, tone, house rules) and a long-term memory that carries over between conversations. See [Personas and memory](#personas-and-memory).
 - **Scheduled tasks**: prompts or shell commands on a cron, interval or one-off schedule, posted in a chat or run in the background. The agent can schedule things itself. See [Scheduled tasks](#scheduled-tasks).
 - **GitHub**: one GitHub App, set up from the admin UI, gives the agent `gh` and `git` access to the repos you pick. See [GitHub](#github).
 - **Skills**: pull `SKILL.md` skills from (private) GitHub repos through the same GitHub App, managed in the admin UI. See [Skills](#skills).
@@ -51,6 +52,8 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/schedule-service.ts` | Validation shared by the admin UI and the agent's tools |
 | `src/agent-schedules.ts` | What the `schedule_*` tools do, scoped to the conversation's chat |
 | `src/skill-commands.ts` | `/skills` |
+| `src/personas.ts` | Personas and memory per user: who a session talks to, and what goes into its system prompt |
+| `src/persona-commands.ts` | `/persona`, `/memory`, `/forget` |
 | `src/admin/server.ts` | Admin JSON API and static frontend (`Bun.serve`) |
 | `src/admin/web/` | Admin frontend (React, no build step) |
 | `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
@@ -133,6 +136,30 @@ Other behaviour:
 - After 3 failed runs in a row a job pauses itself and tells you. Background jobs tell every allowlisted user.
 - The agent sees the jobs of the chat it's talking in, plus the background ones. Jobs it makes can't run more often than every 5 minutes, and it can have at most 20.
 - The admin UI's **Schedules** page shows every job grouped by chat, with its run history and output. You can create jobs there and edit any field, including where results go.
+
+## Personas and memory
+
+Every conversation gets a persona and the user's memories added to OpenCode's own system prompt, through the bot's OpenCode plugin. Both are per Telegram user, so different people can talk to different personas.
+
+- **Personas**: the admin UI's **Personas** page holds the personas: a name and instructions (character, language, tone, house rules). On first start the bot creates **Huub**, ported from huub v1, and makes it the default. Pick another default, or none for OpenCode's plain assistant.
+- **Per user**: people pick their own with `/persona`, or you set it on the **People** page. Changes apply from the next message, also in running conversations.
+- **Who a conversation is with**: in a private chat, that user. In a group, whoever wrote last. Scheduled runs in a chat use that chat's user. Background runs get the default persona and no memory. Sessions the bot didn't start, like ones opened in the OpenCode web UI or subagents, are left alone.
+- **Also added**: the user's name, today's date in `SCHEDULE_TIMEZONE`, and a short note on what Telegram can render.
+
+Memory has three modes, per user (`/memory`, or the People page), with a default on the Personas page:
+
+| Mode | What the agent does |
+| --- | --- |
+| **Off** | Remembers nothing between conversations. |
+| **When asked** (default) | Only saves something when told to ("remember that…", "onthoud dat…"). It never saves or offers to on its own. |
+| **Automatic** | Also saves personal facts the user shares on their own, like people in their life, pets, work, hobbies or favourite teams. After each reply, a separate call to the conversation's model reviews the exchange; anything it saves is posted in the thread as "🧠 Remembered: …" with a **Forget** button. |
+
+- All of a user's memories go into the system prompt; there's no separate lookup step. The agent is told to use them only when relevant.
+- The agent changes them with its `memory_save`, `memory_update` and `memory_forget` tools, which only reach the current user's memories. In Automatic mode it only uses them when asked to remember, correct or forget something; the review step handles the rest, so saving doesn't depend on the chat model noticing.
+- The review costs one extra, small model call per reply, and only runs for users in Automatic mode. It skips scheduled runs and never saves secrets or health and financial details.
+- `/memory` lists them and switches the mode; `/forget 12` deletes one; "Forget everything" wipes them. The People page shows who saved what, lets you edit, add and delete memories, and previews the full system prompt a user gets.
+- The People page also lists each person's conversations. Open one to see every tool call in it, newest first, with a count per tool and how many failed; expand a call for its input and output. Code Mode `execute` calls show the tools their script called, e.g. `execute → memory_save`. In groups, a conversation is listed under whoever wrote in it last.
+- A memory is one sentence of at most 500 characters, and a user can have up to 100.
 
 ## GitHub
 

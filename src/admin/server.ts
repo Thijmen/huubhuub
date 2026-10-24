@@ -6,6 +6,7 @@ import type { Config } from "../config"
 import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
+import { cleanMemory, MemoryError, PERSONA_MAX_CHARS, type Personas } from "../personas"
 import type { QuestionAction } from "../question"
 import { describe, SpecError } from "../schedule-spec"
 import type { ScheduleService, TaskInput } from "../schedule-service"
@@ -13,8 +14,8 @@ import type { Scheduler } from "../scheduler"
 import type { GitHubAccess } from "../github-access"
 import type { GitHubApp } from "../github-app"
 import { SkillError, type SkillSources } from "../skills"
-import type { Schedule, Store } from "../store"
-import { conversation, eventStream } from "./chat"
+import { MEMORY_MODES, type ChatState, type MemoryMode, type Schedule, type Store } from "../store"
+import { conversation, eventStream, toolCalls } from "./chat"
 import index from "./web/index.html"
 
 interface Deps {
@@ -22,6 +23,7 @@ interface Deps {
   bridge: Bridge
   store: Store
   settings: Settings
+  personas: Personas
   bot: Bot
   chats: Chats
   scheduler: Scheduler
@@ -53,7 +55,7 @@ export function startAdmin(deps: Deps) {
       const result = await handler(req, deps, server)
       return result instanceof Response ? result : json(result ?? { ok: true })
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : err instanceof SkillError || err instanceof SpecError ? 400 : 500
+      const status = err instanceof HttpError ? err.status : err instanceof SkillError || err instanceof SpecError || err instanceof MemoryError ? 400 : 500
       if (status === 500) console.error(`admin ${req.method} ${new URL(req.url).pathname} failed`, err)
       return json({ error: errorMessage(err) }, status)
     }
@@ -301,6 +303,74 @@ export function startAdmin(deps: Deps) {
           }
           if (key === "SCHEDULE_TIMEZONE") d.scheduler.reschedule()
         }),
+      },
+
+      "/api/personas": {
+        GET: api((_, d) => personasView(d)),
+        POST: api(async (req, d) => {
+          const body = personaInput(await read<{ name?: string; prompt?: string }>(req))
+          if (d.store.personas().some((p) => p.name.toLowerCase() === body.name.toLowerCase())) throw new HttpError(400, `There's already a persona called ${body.name}.`)
+          return d.store.createPersona(body.name, body.prompt)
+        }),
+      },
+      "/api/personas/defaults": {
+        PUT: api(async (req, d) => {
+          const body = await read<{ personaId?: number | null; memoryMode?: MemoryMode | null }>(req)
+          if (body.personaId !== undefined) d.personas.setDefaultPersona(body.personaId)
+          if (body.memoryMode !== undefined) d.personas.setDefaultMemoryMode(body.memoryMode)
+        }),
+      },
+      "/api/personas/:id": {
+        PUT: api(async (req, d) => {
+          const id = Number(param(req, "id"))
+          const body = personaInput(await read<{ name?: string; prompt?: string }>(req))
+          if (d.store.personas().some((p) => p.id !== id && p.name.toLowerCase() === body.name.toLowerCase())) throw new HttpError(400, `There's already a persona called ${body.name}.`)
+          const updated = d.store.updatePersona(id, body)
+          if (!updated) throw new HttpError(404, `There's no persona #${id}.`)
+          return updated
+        }),
+        DELETE: api((req, d) => {
+          const id = Number(param(req, "id"))
+          if (d.personas.defaultPersonaId === id) d.personas.setDefaultPersona(null)
+          d.store.deletePersona(id)
+        }),
+      },
+
+      "/api/people": { GET: api((_, d) => peopleView(d)) },
+      "/api/people/:id": {
+        PUT: api(async (req, d) => {
+          const id = userId(req)
+          const body = await read<{ personaId?: number | null; memoryMode?: MemoryMode | null }>(req)
+          if (body.personaId != null && !d.store.persona(body.personaId)) throw new HttpError(400, `There's no persona #${body.personaId}.`)
+          if (body.memoryMode != null && !MEMORY_MODES.includes(body.memoryMode)) throw new HttpError(400, `Unknown memory mode ${body.memoryMode}.`)
+          d.store.updatePerson(id, body)
+        }),
+      },
+      "/api/people/:id/threads": { GET: api((req, d) => threadRows(d, d.store.threadsOf(userId(req)))) },
+      "/api/threads/:sessionID/tools": {
+        GET: api(async (req, d) => {
+          const sessionID = param(req, "sessionID")
+          knownSession(d, sessionID)
+          return toolCalls(d.bridge, sessionID)
+        }),
+      },
+      "/api/people/:id/prompt": { GET: api((req, d) => ({ prompt: d.personas.preview(userId(req)) })) },
+      "/api/people/:id/memories": {
+        POST: api(async (req, d) => {
+          const { text } = await read<{ text?: string }>(req)
+          return d.personas.add(userId(req), text, "admin")
+        }),
+        DELETE: api((req, d) => ({ removed: d.store.clearMemories(userId(req)) })),
+      },
+      "/api/memories/:id": {
+        PUT: api(async (req, d) => {
+          const id = Number(param(req, "id"))
+          const { text } = await read<{ text?: string }>(req)
+          const updated = d.store.memory(id) && d.store.updateMemory(id, cleanMemory(text))
+          if (!updated) throw new HttpError(404, `There's no memory #${id}.`)
+          return updated
+        }),
+        DELETE: api((req, d) => d.store.deleteMemory(Number(param(req, "id")))),
       },
 
       "/api/schedules": {
@@ -568,8 +638,11 @@ async function saveMcp(d: Deps, name: string, config: McpConfig): Promise<void> 
   d.store.setMcpServer(name, config as unknown as Record<string, unknown>)
 }
 
-async function threads(d: Deps) {
-  const rows = d.store.list(100)
+function threads(d: Deps) {
+  return threadRows(d, d.store.list(100))
+}
+
+async function threadRows(d: Deps, rows: ChatState[]) {
   const active = await d.bridge.host.session.active().catch(() => ({}) as Record<string, unknown>)
   return Promise.all(
     rows.map(async (r) => {
@@ -585,6 +658,7 @@ async function threads(d: Deps) {
         cost: s?.cost ?? 0,
         tokens: s ? s.tokens.input + s.tokens.output : 0,
         busy: r.sessionID in active,
+        userId: r.userId ?? (r.chatId > 0 ? r.chatId : null),
       }
     }),
   )
@@ -659,6 +733,47 @@ function authorised(req: Request, token: string): boolean {
   const a = Buffer.from(given)
   const b = Buffer.from(token)
   return a.length === b.length && timingSafeEqual(a, b)
+}
+
+function personasView(d: Deps) {
+  const people = d.store.people()
+  return {
+    personas: d.store.personas().map((p) => ({ ...p, users: people.filter((u) => u.personaId === p.id).length })),
+    defaultPersonaId: d.personas.defaultPersonaId,
+    defaultMemoryMode: d.personas.defaultMemoryMode,
+  }
+}
+
+function personaInput(body: { name?: string; prompt?: string }): { name: string; prompt: string } {
+  const name = body.name?.trim() ?? ""
+  const prompt = body.prompt?.trim() ?? ""
+  if (!name || name.length > 60) throw new HttpError(400, "Give the persona a name of up to 60 characters.")
+  if (!prompt) throw new HttpError(400, "Write the persona's instructions first.")
+  if (prompt.length > PERSONA_MAX_CHARS) throw new HttpError(400, `Keep the instructions under ${PERSONA_MAX_CHARS} characters.`)
+  return { name, prompt }
+}
+
+/** Everyone who has written to the bot, plus allowlisted users who haven't yet. */
+function peopleView(d: Deps) {
+  const seen = d.store.people()
+  const ids = new Set(seen.map((p) => p.id))
+  const unseen = d.config.ALLOWED_USER_IDS.filter((id) => !ids.has(id)).map((id) => ({ id, name: null, username: null, personaId: null, memoryMode: null, seenAt: null }))
+  return {
+    defaultPersonaId: d.personas.defaultPersonaId,
+    defaultMemoryMode: d.personas.defaultMemoryMode,
+    personas: d.store.personas().map((p) => ({ id: p.id, name: p.name })),
+    people: [...seen, ...unseen].map((p) => ({
+      ...p,
+      allowed: d.config.ALLOWED_USER_IDS.includes(p.id),
+      memories: d.store.memories(p.id),
+    })),
+  }
+}
+
+function userId(req: Bun.BunRequest): number {
+  const id = Number(param(req, "id"))
+  if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, "Expected a Telegram user ID.")
+  return id
 }
 
 function param(req: Bun.BunRequest, name: string): string {

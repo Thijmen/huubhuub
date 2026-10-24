@@ -308,6 +308,8 @@ export interface ThreadRow {
   cost: number
   tokens: number
   busy: boolean
+  /** The Telegram user the conversation is with, if known. */
+  userId: number | null
 }
 
 export type Tokens = { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
@@ -395,3 +397,59 @@ export interface OAuthAttempt {
 }
 
 export type OAuthStatus = { status: "pending" | "complete" | "expired" } | { status: "failed"; message: string }
+
+export type MemoryMode = "off" | "explicit" | "auto"
+
+export interface PersonaInfo {
+  id: number
+  name: string
+  prompt: string
+  createdAt: number
+  updatedAt: number
+  /** People who picked this persona themselves. */
+  users: number
+}
+
+export interface PersonasResponse {
+  personas: PersonaInfo[]
+  defaultPersonaId: number | null
+  defaultMemoryMode: MemoryMode
+}
+
+export interface MemoryInfo {
+  id: number
+  userId: number
+  text: string
+  source: "agent" | "user" | "admin"
+  createdAt: number
+  updatedAt: number
+}
+
+export interface PersonInfo {
+  id: number
+  name: string | null
+  username: string | null
+  personaId: number | null
+  memoryMode: MemoryMode | null
+  seenAt: number | null
+  allowed: boolean
+  memories: MemoryInfo[]
+}
+
+export interface PeopleResponse {
+  defaultPersonaId: number | null
+  defaultMemoryMode: MemoryMode
+  personas: { id: number; name: string }[]
+  people: PersonInfo[]
+}
+
+export interface ToolCallsResponse {
+  /** Every tool call in the session. */
+  total: number
+  /** Calls per tool; Code Mode `execute` calls count the tools their script called. */
+  tally: { name: string; count: number; errors: number }[]
+  /** Newest first, at most 300. */
+  calls: { messageID: string; inner: string[]; part: Extract<AssistantPart, { type: "tool" }> }[]
+  /** Only the latest 1000 messages were scanned. */
+  partial: boolean
+}

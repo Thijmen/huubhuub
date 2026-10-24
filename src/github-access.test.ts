@@ -107,7 +107,7 @@ describe("GitHubAccess", () => {
     app.list = [installation(1, "Thijmen"), installation(2, "acme")]
     await access.writeGitConfig()
     const internal = new InternalApi()
-    internal.attach({ github: access, schedules: {} as never })
+    internal.attach({ github: access, schedules: {} as never, personas: {} as never })
     try {
       const env: Record<string, string | undefined> = { ...process.env, HOME: dir, XDG_CONFIG_HOME: dir, GIT_CONFIG_NOSYSTEM: "1", ...internal.env(access.gitConfig) }
       // An editor's askpass (VS Code sets one) would answer instead of failing.

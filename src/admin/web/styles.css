@@ -3062,3 +3062,81 @@ pre.plain {
   justify-content: space-between;
   margin-bottom: 16px;
 }
+
+/* Personas and People */
+.persona-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.memory-list {
+  margin: 0;
+}
+
+.memory-list .skill-info {
+  flex: 1;
+}
+
+.memory-head {
+  margin-bottom: 0;
+}
+
+.convo {
+  border-bottom: 1px solid var(--line);
+}
+
+.convo-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.convo-head .collapsible-chev {
+  margin-left: 0;
+}
+
+.convo-head .collapsible-chev.open {
+  transform: rotate(90deg);
+}
+
+.convo-title {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.convo-time {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.convo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 14px 20px;
+}
+
+.convo-tally {
+  justify-content: space-between;
+}
+
+.convo-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
