@@ -1,5 +1,17 @@
 # huubhuub
 
+## 0.1.0
+
+### Minor Changes
+
+- [#28](https://github.com/Thijmen/huubhuub/pull/28) [`7a56207`](https://github.com/Thijmen/huubhuub/commit/7a562075a5a2333e1e101280ead80b3634872a03) Thanks [@Thijmen](https://github.com/Thijmen)! - Add a Costs page to the admin UI: a chart of spend over time split by model, source or person, with totals, breakdowns and the most expensive sessions.
+
+- [#32](https://github.com/Thijmen/huubhuub/pull/32) [`686f725`](https://github.com/Thijmen/huubhuub/commit/686f725e109496db652d4521cb45d57091c090b7) Thanks [@Thijmen](https://github.com/Thijmen)! - Add spending limits per person and a /costs command. Set a default daily and monthly limit on the Settings page, and give people their own limits or none on the People page. At 80% the person gets a heads-up; at the limit the bot stops, refuses new messages and skips their scheduled prompts until it resets. /costs shows what the current conversation cost and your own spending.
+
+### Patch Changes
+
+- [#32](https://github.com/Thijmen/huubhuub/pull/32) [`cc527fa`](https://github.com/Thijmen/huubhuub/commit/cc527faf084e0bf1e89bc38e771a9739babceea7) Thanks [@Thijmen](https://github.com/Thijmen)! - Keep links in messages you send: text linked to an address (like a photo credit pasted from Unsplash) now reaches the agent with its address, as do code and code blocks. This covers messages, captions, /new and /schedule.
+
 ## 0.0.12
 
 ### Patch Changes
