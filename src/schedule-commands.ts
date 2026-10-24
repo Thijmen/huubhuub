@@ -1,6 +1,7 @@
 import { InlineKeyboard, type Bot, type Context } from "grammy"
 import type { Chats } from "./chats"
 import { keyOf } from "./chats"
+import { commandArgs } from "./entities"
 import type { Bridge } from "./opencode"
 import { threadParams } from "./reply"
 import { defaultName, describe, firstRun, formatTime, parseInput, SpecError, USAGE, type Parsed } from "./schedule-spec"
@@ -34,7 +35,7 @@ export function scheduleCommands(deps: { bridge: Bridge; store: Store; scheduler
 
   return (bot: Bot, chats: Chats) => {
     bot.command("schedule", async (ctx) => {
-      const input = ctx.match.trim()
+      const input = commandArgs(ctx)
       if (!input) return void (await ctx.reply(USAGE, { parse_mode: "HTML" }))
       const now = Date.now()
       let parsed: Parsed

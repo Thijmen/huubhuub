@@ -2,7 +2,7 @@ import type { Bot } from "grammy"
 import { timingSafeEqual } from "node:crypto"
 import type { Chats } from "../chats"
 import { isRuntimeSetting, PROTECTED_ENV, type Settings } from "../settings"
-import type { Config } from "../config"
+import { parseUsd, type Config } from "../config"
 import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
@@ -16,7 +16,8 @@ import type { GitHubApp } from "../github-app"
 import { SkillError, type SkillSources } from "../skills"
 import { MEMORY_MODES, type ChatState, type MemoryMode, type Schedule, type Store } from "../store"
 import { conversation, eventStream, toolCalls } from "./chat"
-import { Usage } from "./usage"
+import type { SpendLimits } from "../spend-limits"
+import type { Usage } from "../usage"
 import index from "./web/index.html"
 
 interface Deps {
@@ -32,6 +33,8 @@ interface Deps {
   skills: SkillSources
   github: GitHubApp
   githubAccess: GitHubAccess
+  usage: Usage
+  limits: SpendLimits
   token: string
 }
 
@@ -49,7 +52,6 @@ type Handler = (req: Bun.BunRequest, deps: Deps, server: Bun.Server<undefined>) 
 export function startAdmin(deps: Deps) {
   const { config } = deps
   const started = Date.now()
-  const usage = new Usage(deps.bridge, deps.store)
 
   const api = (handler: Handler) => async (req: Bun.BunRequest, server: Bun.Server<undefined>) => {
     if (!authorised(req, deps.token)) return json({ error: "Unauthorised" }, 401)
@@ -342,10 +344,22 @@ export function startAdmin(deps: Deps) {
       "/api/people/:id": {
         PUT: api(async (req, d) => {
           const id = userId(req)
-          const body = await read<{ personaId?: number | null; memoryMode?: MemoryMode | null }>(req)
+          const body = await read<{
+            personaId?: number | null
+            memoryMode?: MemoryMode | null
+            spendDaily?: number | string | null
+            spendMonthly?: number | string | null
+            spendExempt?: boolean
+          }>(req)
           if (body.personaId != null && !d.store.persona(body.personaId)) throw new HttpError(400, `There's no persona #${body.personaId}.`)
           if (body.memoryMode != null && !MEMORY_MODES.includes(body.memoryMode)) throw new HttpError(400, `Unknown memory mode ${body.memoryMode}.`)
-          d.store.updatePerson(id, body)
+          d.store.updatePerson(id, {
+            personaId: body.personaId,
+            memoryMode: body.memoryMode,
+            spendDaily: limitInput(body.spendDaily),
+            spendMonthly: limitInput(body.spendMonthly),
+            spendExempt: body.spendExempt === undefined ? undefined : Boolean(body.spendExempt),
+          })
         }),
       },
       "/api/people/:id/threads": { GET: api((req, d) => threadRows(d, d.store.threadsOf(userId(req)))) },
@@ -410,7 +424,7 @@ export function startAdmin(deps: Deps) {
         }),
       },
 
-      "/api/usage": { GET: api(() => usage.report()) },
+      "/api/usage": { GET: api((_, d) => d.usage.report()) },
 
       "/api/threads": {
         GET: api((_, d) => threads(d)),
@@ -759,19 +773,43 @@ function personaInput(body: { name?: string; prompt?: string }): { name: string;
 }
 
 /** Everyone who has written to the bot, plus allowlisted users who haven't yet. */
-function peopleView(d: Deps) {
+async function peopleView(d: Deps) {
   const seen = d.store.people()
   const ids = new Set(seen.map((p) => p.id))
-  const unseen = d.config.ALLOWED_USER_IDS.filter((id) => !ids.has(id)).map((id) => ({ id, name: null, username: null, personaId: null, memoryMode: null, seenAt: null }))
+  const unseen = d.config.ALLOWED_USER_IDS.filter((id) => !ids.has(id)).map((id) => ({
+    id,
+    name: null,
+    username: null,
+    personaId: null,
+    memoryMode: null,
+    seenAt: null,
+    spendDaily: null,
+    spendMonthly: null,
+    spendExempt: false,
+  }))
+  const all = [...seen, ...unseen]
+  const spend = await Promise.all(all.map((p) => d.limits.spend(p.id).catch(() => null)))
   return {
     defaultPersonaId: d.personas.defaultPersonaId,
     defaultMemoryMode: d.personas.defaultMemoryMode,
+    defaultLimits: { daily: d.config.SPEND_LIMIT_DAILY ?? null, monthly: d.config.SPEND_LIMIT_MONTHLY ?? null },
     personas: d.store.personas().map((p) => ({ id: p.id, name: p.name })),
-    people: [...seen, ...unseen].map((p) => ({
+    people: all.map((p, i) => ({
       ...p,
       allowed: d.config.ALLOWED_USER_IDS.includes(p.id),
       memories: d.store.memories(p.id),
+      spend: spend[i],
     })),
+  }
+}
+
+/** A person's own limit: a dollar amount, `null` for the default, or `undefined` to leave it alone. */
+function limitInput(value: number | string | null | undefined): number | null | undefined {
+  if (value === undefined || value === null) return value
+  try {
+    return parseUsd(String(value)) ?? null
+  } catch (err) {
+    throw new HttpError(400, errorMessage(err))
   }
 }
 

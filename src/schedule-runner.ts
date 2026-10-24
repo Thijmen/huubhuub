@@ -28,6 +28,8 @@ export interface RunnerDeps {
   workspace: string
   /** The environment commands run with: the agent's, plus a GitHub token when the app is connected. */
   commandEnv: (command: string) => Promise<Record<string, string | undefined>>
+  /** Why a person can't spend anything right now, if they can't. */
+  spendBlocked?: (userId: number) => Promise<string | undefined>
 }
 
 /** Runs scheduled tasks: prompts in a fresh session, or shell commands in the workspace. Reports them in Telegram unless they run in the background. */
@@ -46,6 +48,12 @@ export class ScheduleRunner implements Runner {
 
   async start(s: Schedule, startedAt: number): Promise<{ sessionID: string | null; done: Promise<RunOutcome> }> {
     if (s.type === "command") return { sessionID: null, done: this.runCommandTask(s, s.command ?? "") }
+    // A prompt posted in someone's private chat spends on their account.
+    const blocked = s.chatId !== null && s.chatId > 0 ? await this.d.spendBlocked?.(s.chatId) : undefined
+    if (blocked) {
+      await this.notify(s.chatId, `⏭ Skipped <b>${escape(s.name)}</b>. ${escape(blocked)}`).catch((err) => console.error("Couldn't report a skipped run", err))
+      return { sessionID: null, done: Promise.resolve({ status: "skipped", error: blocked }) }
+    }
     let prompt = s.prompt
     if (s.command) {
       const pre = await this.exec(s.command)

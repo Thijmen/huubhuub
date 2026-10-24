@@ -68,6 +68,29 @@ describe("ScheduleRunner", () => {
     expect(sent).toHaveLength(1)
   })
 
+  test("a prompt in a private chat is skipped while its person is over their spending limit", async () => {
+    const checked: number[] = []
+    const { runner: r, sent } = runner({
+      spendBlocked: async (id) => {
+        checked.push(id)
+        return "⛔ You've reached today's spending limit of $5.00."
+      },
+    })
+    const run = await r.start({ ...base, type: "prompt", prompt: "Summarise the news", command: null }, 0)
+    expect(run.sessionID).toBeNull()
+    expect(await run.done).toEqual({ status: "skipped", error: "⛔ You've reached today's spending limit of $5.00." })
+    expect(checked).toEqual([42])
+    expect(sent[0]!.text).toBe("⏭ Skipped <b>disk</b>. ⛔ You've reached today's spending limit of $5.00.")
+  })
+
+  test("commands and group chats aren't held to spending limits", async () => {
+    const spendBlocked = async () => "blocked"
+    const { runner: r } = runner({ spendBlocked })
+    expect((await (await r.start(base, 0)).done).status).toBe("ok")
+    const group = await r.start({ ...base, chatId: -100, type: "prompt", prompt: "hi", command: null }, 0).catch((e: Error) => e.message)
+    expect(group).toBe("no session expected")
+  })
+
   test("background commands post nothing", async () => {
     const { runner: r, sent } = runner()
     expect((await (await r.start({ ...base, chatId: null }, 0)).done).status).toBe("ok")

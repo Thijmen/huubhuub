@@ -64,6 +64,11 @@ export interface Person {
   /** `null` uses the default mode. */
   memoryMode: MemoryMode | null
   seenAt: number | null
+  /** Their own spending limits in dollars; `null` uses the default. */
+  spendDaily: number | null
+  spendMonthly: number | null
+  /** No spending limits at all, whatever the defaults. */
+  spendExempt: boolean
 }
 
 export interface Memory {
@@ -224,6 +229,10 @@ export class Store {
     )`)
     this.db.run("CREATE INDEX IF NOT EXISTS memories_by_user ON memories (user_id, id)")
     if (!this.columns("threads").some((c) => c.name === "user_id")) this.db.run("ALTER TABLE threads ADD COLUMN user_id INTEGER")
+    const peopleColumns = this.columns("people").map((c) => c.name)
+    if (!peopleColumns.includes("spend_daily")) this.db.run("ALTER TABLE people ADD COLUMN spend_daily REAL")
+    if (!peopleColumns.includes("spend_monthly")) this.db.run("ALTER TABLE people ADD COLUMN spend_monthly REAL")
+    if (!peopleColumns.includes("spend_exempt")) this.db.run("ALTER TABLE people ADD COLUMN spend_exempt INTEGER NOT NULL DEFAULT 0")
     this.db.run("PRAGMA foreign_keys = ON")
     this.migrateChats()
   }
@@ -563,10 +572,13 @@ export class Store {
       .run(id, name, username, now)
   }
 
-  updatePerson(id: number, patch: Partial<Pick<Person, "personaId" | "memoryMode">>): Person {
+  updatePerson(id: number, patch: Partial<Pick<Person, "personaId" | "memoryMode" | "spendDaily" | "spendMonthly" | "spendExempt">>): Person {
     this.db.query("INSERT OR IGNORE INTO people (user_id) VALUES (?)").run(id)
     if (patch.personaId !== undefined) this.db.query("UPDATE people SET persona_id = ? WHERE user_id = ?").run(patch.personaId, id)
     if (patch.memoryMode !== undefined) this.db.query("UPDATE people SET memory_mode = ? WHERE user_id = ?").run(patch.memoryMode, id)
+    if (patch.spendDaily !== undefined) this.db.query("UPDATE people SET spend_daily = ? WHERE user_id = ?").run(patch.spendDaily, id)
+    if (patch.spendMonthly !== undefined) this.db.query("UPDATE people SET spend_monthly = ? WHERE user_id = ?").run(patch.spendMonthly, id)
+    if (patch.spendExempt !== undefined) this.db.query("UPDATE people SET spend_exempt = ? WHERE user_id = ?").run(patch.spendExempt ? 1 : 0, id)
     return this.person(id)!
   }
 
@@ -744,11 +756,31 @@ function toPersona(r: PersonaRow): Persona {
   return { id: r.id, name: r.name, prompt: r.prompt, createdAt: r.created_at, updatedAt: r.updated_at }
 }
 
-type PersonRow = { user_id: number; name: string | null; username: string | null; persona_id: number | null; memory_mode: string | null; seen_at: number | null }
+type PersonRow = {
+  user_id: number
+  name: string | null
+  username: string | null
+  persona_id: number | null
+  memory_mode: string | null
+  seen_at: number | null
+  spend_daily: number | null
+  spend_monthly: number | null
+  spend_exempt: number
+}
 
 function toPerson(r: PersonRow): Person {
   const mode = MEMORY_MODES.find((m) => m === r.memory_mode) ?? null
-  return { id: r.user_id, name: r.name, username: r.username, personaId: r.persona_id, memoryMode: mode, seenAt: r.seen_at }
+  return {
+    id: r.user_id,
+    name: r.name,
+    username: r.username,
+    personaId: r.persona_id,
+    memoryMode: mode,
+    seenAt: r.seen_at,
+    spendDaily: r.spend_daily,
+    spendMonthly: r.spend_monthly,
+    spendExempt: r.spend_exempt === 1,
+  }
 }
 
 type MemoryRow = { id: number; user_id: number; text: string; source: Memory["source"]; created_at: number; updated_at: number }

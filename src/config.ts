@@ -51,12 +51,15 @@ const schema = z.object({
     .default(() => serverTimeZone())
     .refine(isTimeZone, "must be an IANA time zone such as Europe/Amsterdam"),
   SKILL_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(DEFAULT_SKILL_SYNC_INTERVAL),
+  /** What each person may spend per day and per month, in US dollars. Unset means no limit; people can have their own. */
+  SPEND_LIMIT_DAILY: z.coerce.number().positive().optional(),
+  SPEND_LIMIT_MONTHLY: z.coerce.number().positive().optional(),
 })
 
 export type Config = z.infer<typeof schema>
 
 /** Settings the admin UI can change at runtime. They are stored in SQLite and override the environment. */
-export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "MEMORY_MODEL", "ALLOWED_USER_IDS", "THREAD_MODE", "TELEGRAM_STREAMING", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE", "SKILL_SYNC_INTERVAL_MINUTES"] as const
+export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "MEMORY_MODEL", "ALLOWED_USER_IDS", "THREAD_MODE", "TELEGRAM_STREAMING", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE", "SKILL_SYNC_INTERVAL_MINUTES", "SPEND_LIMIT_DAILY", "SPEND_LIMIT_MONTHLY"] as const
 export type RuntimeSetting = (typeof RUNTIME_SETTINGS)[number]
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -116,7 +119,20 @@ export function applySetting(config: Config, key: RuntimeSetting, value: string 
       config.SKILL_SYNC_INTERVAL_MINUTES = minutes
       break
     }
+    case "SPEND_LIMIT_DAILY":
+    case "SPEND_LIMIT_MONTHLY":
+      config[key] = parseUsd(raw)
+      break
   }
+}
+
+/** A dollar amount above zero, or `undefined` for none. Accepts "5", "5.50" and "$5". */
+export function parseUsd(raw: string): number | undefined {
+  const text = raw.trim().replace(/^\$/, "")
+  if (!text) return undefined
+  const value = Number(text)
+  if (!Number.isFinite(value) || value <= 0) throw new Error("A spending limit must be an amount in dollars above 0, or empty for no limit.")
+  return Math.round(value * 100) / 100
 }
 
 export function parseModelRef(ref: string): { providerID: string; id: string } {

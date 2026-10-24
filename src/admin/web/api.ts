@@ -236,7 +236,7 @@ export interface GitHubStatus {
 }
 
 export interface SettingInfo {
-  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "MEMORY_MODEL" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE" | "SKILL_SYNC_INTERVAL_MINUTES"
+  key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "MEMORY_MODEL" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE" | "SKILL_SYNC_INTERVAL_MINUTES" | "SPEND_LIMIT_DAILY" | "SPEND_LIMIT_MONTHLY"
   value: string
   source: "admin" | "env" | "default"
   envValue: string
@@ -436,11 +436,33 @@ export interface PersonInfo {
   seenAt: number | null
   allowed: boolean
   memories: MemoryInfo[]
+  /** Their own limits; `null` uses the default. */
+  spendDaily: number | null
+  spendMonthly: number | null
+  spendExempt: boolean
+  /** Spend against the limits that apply to them; null when it couldn't be read. */
+  spend: PersonSpend | null
+}
+
+export interface PeriodSpend {
+  period: "day" | "month"
+  spent: number
+  limit: number | null
+  from: number
+  resetsAt: number
+}
+
+export interface PersonSpend {
+  userId: number
+  exempt: boolean
+  day: PeriodSpend
+  month: PeriodSpend
 }
 
 export interface PeopleResponse {
   defaultPersonaId: number | null
   defaultMemoryMode: MemoryMode
+  defaultLimits: { daily: number | null; monthly: number | null }
   personas: { id: number; name: string }[]
   people: PersonInfo[]
 }

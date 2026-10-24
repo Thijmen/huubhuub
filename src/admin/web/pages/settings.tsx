@@ -30,6 +30,18 @@ export function SettingsPage() {
           <QuestionTimeoutSetting setting={get("QUESTION_TIMEOUT_MINUTES")!} onSaved={reload} />
           <TimeZoneSetting setting={get("SCHEDULE_TIMEZONE")!} onSaved={reload} />
           <SkillSyncSetting setting={get("SKILL_SYNC_INTERVAL_MINUTES")!} onSaved={reload} />
+          <SpendLimitSetting
+            setting={get("SPEND_LIMIT_DAILY")!}
+            onSaved={reload}
+            title="Daily spending limit"
+            description="What each person may spend per day, in dollars. At the limit the bot stops and refuses new messages until midnight. Leave empty for no limit; people can get their own on the People page."
+          />
+          <SpendLimitSetting
+            setting={get("SPEND_LIMIT_MONTHLY")!}
+            onSaved={reload}
+            title="Monthly spending limit"
+            description="The same per calendar month. Days and months follow the schedule time zone."
+          />
         </div>
       )}
     </>
@@ -299,6 +311,31 @@ function SkillSyncSetting({ setting, onSaved }: { setting: SettingInfo; onSaved:
         <input className="input mono" inputMode="numeric" value={draft} onChange={(e) => setDraft(e.target.value)} />
         <span className="muted small">minutes</span>
         <Button busy={busy} disabled={!valid || draft.trim() === setting.value} type="submit">
+          Save
+        </Button>
+      </form>
+    </SettingCard>
+  )
+}
+
+function SpendLimitSetting({ setting, onSaved, title, description }: { setting: SettingInfo; onSaved: () => Promise<void>; title: string; description: string }) {
+  const { busy, save } = useSave(setting.key, onSaved)
+  const [draft, setDraft] = useState(setting.value)
+  useEffect(() => setDraft(setting.value), [setting.value])
+  const text = draft.trim().replace(/^\$/, "")
+  const valid = text === "" || Number(text) > 0
+  return (
+    <SettingCard title={title} description={description} setting={setting} busy={busy} onReset={() => save(null)}>
+      <form
+        className="env-inline"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (valid) void save(text)
+        }}
+      >
+        <span className="muted">$</span>
+        <input className="input mono" inputMode="decimal" placeholder="no limit" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <Button busy={busy} disabled={!valid || text === setting.value} type="submit">
           Save
         </Button>
       </form>
