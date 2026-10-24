@@ -145,7 +145,9 @@ const plugin: Plugin = {
     await ctx.shell.hook("create.before", async (event) => {
       if (event.env.GH_TOKEN) return
       try {
-        const res = await call(`/github/token?cwd=${encodeURIComponent(event.cwd)}`, {}, AbortSignal.timeout(5000))
+        // The command lets the bot pick the account it's about, e.g. an organization rather than the default.
+        const q = new URLSearchParams({ cwd: event.cwd, command: event.command.slice(0, 4000) })
+        const res = await call(`/github/token?${q}`, {}, AbortSignal.timeout(5000))
         if (res.status === 200) event.env.GH_TOKEN = await res.text()
       } catch (err) {
         console.error("Couldn't get a GitHub token for this shell command", err)

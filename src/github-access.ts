@@ -61,13 +61,17 @@ export class GitHubAccess {
   }
 
   /**
-   * A token for the installation on `owner`, or on the owner of the repo checked out in `cwd`.
-   * Without a match it falls back to the default installation, unless `strict`.
+   * A token for the installation on `owner`, else on an account `command` names (like `gh repo clone acme/x`),
+   * else on the owner of the repo checked out in `cwd`. Without a match it falls back to the default
+   * installation, unless `strict`. A token only covers one account, so this picks the one the command needs.
    */
-  async token(q: { owner?: string; cwd?: string; strict?: boolean }): Promise<string | null> {
+  async token(q: { owner?: string; command?: string; cwd?: string; strict?: boolean }): Promise<string | null> {
     if (!this.app.connected()) return null
-    const owner = q.owner?.trim() || (q.cwd ? await this.ownerOf(q.cwd) : null)
     const list = (await this.app.installations()).filter((i) => !i.suspended)
+    const owner =
+      q.owner?.trim() ||
+      (q.command ? mentionedAccount(q.command, list.map((i) => i.account)) : null) ||
+      (q.cwd ? await this.ownerOf(q.cwd) : null)
     const match = owner ? list.find((i) => i.account.toLowerCase() === owner.toLowerCase()) : undefined
     const pick = match ?? (q.strict ? undefined : this.fallback(list))
     return pick ? this.app.token(pick.id, AGENT_TOKEN_VALID_MS) : null
@@ -116,6 +120,20 @@ export class GitHubAccess {
 export function githubOwner(url: string): string | null {
   const m = /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([A-Za-z0-9-]+)\//.exec(url.trim())
   return m?.[1] ?? null
+}
+
+/**
+ * The first of `accounts` a shell command names as a GitHub owner: `acme/repo`, `github.com/acme`,
+ * `orgs/acme` or a bare `acme` argument. Path segments like `/home/acme/` don't count.
+ */
+export function mentionedAccount(command: string, accounts: string[]): string | null {
+  let best: { account: string; at: number } | null = null
+  for (const account of accounts) {
+    if (!/^[A-Za-z0-9-]+$/.test(account)) continue
+    const m = new RegExp(`(?:^|[\\s'"=:(]|github\\.com[/:]|\\b(?:repos|orgs|users)/)${account}(?![A-Za-z0-9-])`, "i").exec(command)
+    if (m && (!best || m.index < best.at)) best = { account, at: m.index }
+  }
+  return best?.account ?? null
 }
 
 export function missingPermissions(wanted: Record<string, string>, granted: Record<string, string>): string[] {

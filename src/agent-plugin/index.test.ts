@@ -7,7 +7,7 @@ type Tool = { name: string; input: { required?: readonly string[] }; execute: (i
 const internal = new InternalApi()
 const calls: { op: string; sessionID: string; input: Record<string, unknown> }[] = []
 const tools = new Map<string, Tool>()
-let shellHook: ((event: { cwd: string; env: Record<string, string | undefined> }) => Promise<void>) | undefined
+let shellHook: ((event: { command: string; cwd: string; env: Record<string, string | undefined> }) => Promise<void>) | undefined
 type Request = { sessionID: string; system: { type: "text"; text: string }[]; tools: Record<string, unknown> }
 let contextHook: ((request: Request) => Promise<void>) | undefined
 const memoryCalls: { op: string; sessionID: string; input: Record<string, unknown> }[] = []
@@ -15,7 +15,7 @@ const saved = { url: process.env.BOT_INTERNAL_URL, token: process.env.BOT_INTERN
 
 beforeAll(async () => {
   internal.attach({
-    github: { token: async (q: { cwd?: string }) => (q.cwd === "/repo" ? "tok-repo" : null) } as never,
+    github: { token: async (q: { cwd?: string; command?: string }) => (q.command?.includes("acme/") ? "tok-acme" : q.cwd === "/repo" ? "tok-repo" : null) } as never,
     schedules: {
       call: async (op: string, sessionID: string, input: Record<string, unknown>) => {
         if (input.id === 99) throw new (await import("../schedule-spec")).SpecError("There's no schedule #99 here.")
@@ -95,14 +95,17 @@ describe("agent plugin", () => {
     await expect(tools.get("schedule_delete")!.execute({ id: 99 }, { sessionID: "ses_1", signal: new AbortController().signal })).rejects.toThrow("no schedule #99")
   })
 
-  test("shell commands get GH_TOKEN for their checkout, unless one is set", async () => {
-    const event = { cwd: "/repo", env: {} as Record<string, string | undefined> }
+  test("shell commands get GH_TOKEN for the account they name or their checkout, unless one is set", async () => {
+    const named = { command: "gh repo clone acme/widgets", cwd: "/tmp", env: {} as Record<string, string | undefined> }
+    await shellHook!(named)
+    expect(named.env.GH_TOKEN).toBe("tok-acme")
+    const event = { command: "gh pr list", cwd: "/repo", env: {} as Record<string, string | undefined> }
     await shellHook!(event)
     expect(event.env.GH_TOKEN).toBe("tok-repo")
-    const elsewhere = { cwd: "/tmp", env: {} as Record<string, string | undefined> }
+    const elsewhere = { command: "gh pr list", cwd: "/tmp", env: {} as Record<string, string | undefined> }
     await shellHook!(elsewhere)
     expect(elsewhere.env.GH_TOKEN).toBeUndefined()
-    const own = { cwd: "/repo", env: { GH_TOKEN: "mine" } as Record<string, string | undefined> }
+    const own = { command: "gh pr list", cwd: "/repo", env: { GH_TOKEN: "mine" } as Record<string, string | undefined> }
     await shellHook!(own)
     expect(own.env.GH_TOKEN).toBe("mine")
   })
