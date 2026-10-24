@@ -1721,6 +1721,13 @@ kbd {
   animation: pop 0.15s ease-out;
 }
 
+/* Each card's backdrop-filter makes it its own stacking context, so the popup's z-index only counts
+   inside its card. Lift the card with an open popup above the cards after it. */
+.card:has(.combo-pop) {
+  position: relative;
+  z-index: 20;
+}
+
 .combo-pop ul {
   list-style: none;
   margin: 8px 0 0;
