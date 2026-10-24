@@ -12,7 +12,7 @@ HuubHuub is a Telegram bot that uses an [OpenCode V2](https://opencode.ai/v2/doc
 - **GitHub**: one GitHub App, set up from the admin UI, gives the agent `gh` and `git` access to the repos you pick. See [GitHub](#github).
 - **Skills**: pull `SKILL.md` skills from (private) GitHub repos through the same GitHub App, managed in the admin UI. See [Skills](#skills).
 - **Allowlist**: only the Telegram user IDs in `ALLOWED_USER_IDS`, or those added in the admin UI, can use the bot.
-- **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, and read and reply to conversations live, and open the OpenCode web UI for debugging. See [Admin UI](#admin-ui).
+- **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, read and reply to conversations live, see what sessions cost over time, and open the OpenCode web UI for debugging. See [Admin UI](#admin-ui).
 
 ## Architecture
 
@@ -55,6 +55,7 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/personas.ts` | Personas and memory per user: who a session talks to, and what goes into its system prompt |
 | `src/persona-commands.ts` | `/persona`, `/memory`, `/forget` |
 | `src/admin/server.ts` | Admin JSON API and static frontend (`Bun.serve`) |
+| `src/admin/usage.ts` | Spend per hour, session and model, summed from the cost OpenCode records on each model call |
 | `src/admin/web/` | Admin frontend (React, no build step) |
 | `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
 

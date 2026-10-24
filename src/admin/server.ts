@@ -16,6 +16,7 @@ import type { GitHubApp } from "../github-app"
 import { SkillError, type SkillSources } from "../skills"
 import { MEMORY_MODES, type ChatState, type MemoryMode, type Schedule, type Store } from "../store"
 import { conversation, eventStream, toolCalls } from "./chat"
+import { Usage } from "./usage"
 import index from "./web/index.html"
 
 interface Deps {
@@ -48,6 +49,7 @@ type Handler = (req: Bun.BunRequest, deps: Deps, server: Bun.Server<undefined>) 
 export function startAdmin(deps: Deps) {
   const { config } = deps
   const started = Date.now()
+  const usage = new Usage(deps.bridge, deps.store)
 
   const api = (handler: Handler) => async (req: Bun.BunRequest, server: Bun.Server<undefined>) => {
     if (!authorised(req, deps.token)) return json({ error: "Unauthorised" }, 401)
@@ -407,6 +409,8 @@ export function startAdmin(deps: Deps) {
           }
         }),
       },
+
+      "/api/usage": { GET: api(() => usage.report()) },
 
       "/api/threads": {
         GET: api((_, d) => threads(d)),
