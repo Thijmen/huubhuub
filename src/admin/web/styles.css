@@ -3329,3 +3329,46 @@ pre.plain {
     grid-template-columns: 1fr;
   }
 }
+
+/* Spending limits on the People page */
+
+.spend-meters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.spend-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spend-meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.spend-meter.near .bar span {
+  background: var(--warn);
+}
+
+.spend-meter.reached .bar span {
+  background: var(--error);
+}
+
+.spend-limit-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 14px 20px;
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .spend-meters,
+  .spend-limit-form {
+    grid-template-columns: 1fr;
+  }
+}

@@ -7,6 +7,7 @@ import { AgentSchedules } from "./agent-schedules"
 import { createBot } from "./bot"
 import { Chats } from "./chats"
 import { loadConfig } from "./config"
+import { costCommands } from "./cost-commands"
 import { GitHubAccess } from "./github-access"
 import { GitHubApp } from "./github-app"
 import { InternalApi } from "./internal"
@@ -19,6 +20,9 @@ import { ScheduleRunner } from "./schedule-runner"
 import { ScheduleService } from "./schedule-service"
 import { Scheduler } from "./scheduler"
 import { Settings } from "./settings"
+import { SpendLimits } from "./spend-limits"
+import { threadParams } from "./reply"
+import { Usage } from "./usage"
 import { personaCommands } from "./persona-commands"
 import { skillCommands } from "./skill-commands"
 import { SkillSources } from "./skills"
@@ -62,6 +66,18 @@ const questions = new Questions(
 )
 bridge.subscribeAll((e) => trackForms(questions, e))
 
+const usage = new Usage(bridge, store)
+const limits = new SpendLimits({
+  config,
+  store,
+  usage,
+  bridge,
+  send: (key, html) => bot.api.sendMessage(key.chatId, html, { parse_mode: "HTML", ...threadParams(key) }).then(() => {}),
+})
+bridge.subscribeAll((e) => void limits.onEvent(e).catch((err) => console.error("spending limit check failed", err)))
+// Read past spend now, so the first message doesn't wait for it.
+void usage.sync().catch((err) => console.error("usage scan failed", err))
+
 const timeZone = () => config.SCHEDULE_TIMEZONE
 /** Scheduled commands get the agent's environment, plus a GitHub token for `gh` (git asks the credential helper). */
 const commandEnv = async (command: string): Promise<Record<string, string | undefined>> => {
@@ -78,7 +94,7 @@ const bot = createBot(
   config,
   bridge,
   (b) => {
-    chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions)
+    chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions, limits)
     const runner = new ScheduleRunner({
       api: b.api,
       bridge,
@@ -88,6 +104,10 @@ const bot = createBot(
       allowedUsers: () => config.ALLOWED_USER_IDS,
       workspace: config.WORKSPACE_DIR,
       commandEnv,
+      spendBlocked: async (userId) => {
+        const hit = await limits.reached(userId)
+        return hit ? limits.blockedText(hit) : undefined
+      },
     })
     scheduler = new Scheduler(store, runner, timeZone)
     return chats
@@ -96,6 +116,7 @@ const bot = createBot(
     scheduleCommands({ bridge, store, scheduler, timeZone })(b, c)
     skillCommands({ skills, timeZone })(b)
     personaCommands({ store, personas })(b)
+    costCommands({ usage, limits, timeZone })(b, c)
   },
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
@@ -118,6 +139,7 @@ await bot.api.setMyCommands([
   { command: "model", description: "Switch model" },
   { command: "agent", description: "Switch agent" },
   { command: "status", description: "Session info" },
+  { command: "costs", description: "What this conversation cost, and your spending" },
   { command: "schedule", description: "Run a prompt or command on a schedule" },
   { command: "schedules", description: "Manage scheduled tasks" },
   { command: "skills", description: "List loaded skills" },
@@ -130,7 +152,7 @@ scheduler.start()
 skills.start()
 console.log(`Scheduler running (${store.schedules().length} jobs, time zone ${config.SCHEDULE_TIMEZONE})`)
 
-const admin = startAdmin({ config, bridge, store, settings, personas, bot, chats, scheduler, schedules, skills, github, githubAccess, token: adminToken() })
+const admin = startAdmin({ config, bridge, store, settings, personas, bot, chats, scheduler, schedules, skills, github, githubAccess, usage, limits, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
 
 function adminToken(): string {

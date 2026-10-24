@@ -6,7 +6,7 @@ const GRACE_MS = 5 * 60_000
 const MAX_SLEEP_MS = 60_000
 export const MAX_FAILURES = 3
 
-export type RunOutcome = { status: "ok" | "silent" | "failed"; error?: string; counts?: boolean; output?: string }
+export type RunOutcome = { status: "ok" | "silent" | "failed" | "skipped"; error?: string; counts?: boolean; output?: string }
 
 export interface Runner {
   /** Start a run and resolve once it's under way; `done` settles when the run ends. Command tasks have no session. */

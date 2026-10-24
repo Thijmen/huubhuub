@@ -6,7 +6,8 @@ HuubHuub is a Telegram bot that uses an [OpenCode V2](https://opencode.ai/v2/doc
 - **Images and files**: PNG, JPEG, GIF, WebP, and UTF-8 text files are forwarded as attachments. Images need a model with image input.
 - **Voice notes**: transcribed with Amazon Transcribe Streaming, then sent as a prompt.
 - **Threads**: each new conversation opens its own Telegram topic, named after the session title once OpenCode generates one. See [Threads](#threads).
-- **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/schedule`, `/schedules`, `/skills`, `/persona`, `/memory`, `/forget`, `/whoami`, `/help`
+- **Commands**: `/new [prompt]`, `/stop`, `/model`, `/agent`, `/status`, `/costs`, `/schedule`, `/schedules`, `/skills`, `/persona`, `/memory`, `/forget`, `/whoami`, `/help`
+- **Costs and spending limits**: see what sessions cost over time in the admin UI, `/costs` in a chat, and daily or monthly limits per person. See [Costs and spending limits](#costs-and-spending-limits).
 - **Personas and memory**: each Telegram user gets a persona (who the bot is: name, tone, house rules) and a long-term memory that carries over between conversations. See [Personas and memory](#personas-and-memory).
 - **Scheduled tasks**: prompts or shell commands on a cron, interval or one-off schedule, posted in a chat or run in the background. The agent can schedule things itself. See [Scheduled tasks](#scheduled-tasks).
 - **GitHub**: one GitHub App, set up from the admin UI, gives the agent `gh` and `git` access to the repos you pick. See [GitHub](#github).
@@ -55,7 +56,9 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/personas.ts` | Personas and memory per user: who a session talks to, and what goes into its system prompt |
 | `src/persona-commands.ts` | `/persona`, `/memory`, `/forget` |
 | `src/admin/server.ts` | Admin JSON API and static frontend (`Bun.serve`) |
-| `src/admin/usage.ts` | Spend per hour, session and model, summed from the cost OpenCode records on each model call |
+| `src/usage.ts` | Spend per hour, session and model, summed from the cost OpenCode records on each model call, plus calls as they finish |
+| `src/spend-limits.ts` | Daily and monthly spending limits per person: warn, refuse new work, stop running work |
+| `src/cost-commands.ts` | `/costs` |
 | `src/admin/web/` | Admin frontend (React, no build step) |
 | `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
 
@@ -162,6 +165,19 @@ Memory has three modes, per user (`/memory`, or the People page), with a default
 - `/memory` lists them and switches the mode; `/forget 12` deletes one; "Forget everything" wipes them. The People page shows who saved what, lets you edit, add and delete memories, and previews the full system prompt a user gets.
 - The People page also lists each person's conversations. Open one to see every tool call in it, newest first, with a count per tool and how many failed; expand a call for its input and output. Code Mode `execute` calls show the tools their script called, e.g. `execute → memory_save`. In groups, a conversation is listed under whoever wrote in it last.
 - A memory is one sentence of at most 500 characters, and a user can have up to 100.
+
+## Costs and spending limits
+
+OpenCode records the price of every model call. The bot adds these up per session, model and person.
+
+- **Costs page** in the admin UI: spend over time split by model, source (conversations, scheduled tasks, memory reviews) or person, with the most expensive sessions.
+- **`/costs`** in Telegram: what the conversation in that thread has cost, including its subagents, and what the sender has spent today and this month against their limits.
+- **Limits**: a default daily and monthly limit in dollars on the Settings page (`SPEND_LIMIT_DAILY`, `SPEND_LIMIT_MONTHLY`; empty means none). On the People page each person can get their own limits, or **No limits** (for yourself, say).
+  - At 80% of a limit the person gets a heads-up in the thread.
+  - At the limit, new messages are refused with when the limit resets, and a reply that's still running is stopped after the model call that crossed it.
+  - Scheduled prompts that post in the person's private chat are skipped until it resets; shell-command tasks still run.
+  - Days and months follow `SCHEDULE_TIMEZONE`.
+- **Who pays**: a conversation's spend counts towards whoever it's with (see [who a conversation is with](#personas-and-memory)), including subagents it starts. In groups that is whoever wrote last. Scheduled tasks count towards the person whose private chat they post in. Memory reviews and background jobs count towards nobody.
 
 ## GitHub
 

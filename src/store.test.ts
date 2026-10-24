@@ -57,3 +57,20 @@ describe("Store schedules", () => {
     store.close()
   })
 })
+
+describe("Store spending limits", () => {
+  test("adds the columns to an existing people table and stores limits per person", () => {
+    const db = new Database(join(dir, "bot.sqlite"), { create: true })
+    db.run("CREATE TABLE people (user_id INTEGER PRIMARY KEY, name TEXT, username TEXT, persona_id INTEGER, memory_mode TEXT, seen_at INTEGER)")
+    db.run("INSERT INTO people (user_id, name) VALUES (7, 'Sanne')")
+    db.close()
+
+    const store = new Store(dir)
+    expect(store.person(7)).toMatchObject({ name: "Sanne", spendDaily: null, spendMonthly: null, spendExempt: false })
+    store.updatePerson(7, { spendDaily: 2.5, spendExempt: true })
+    expect(store.person(7)).toMatchObject({ spendDaily: 2.5, spendMonthly: null, spendExempt: true })
+    store.updatePerson(7, { spendDaily: null, spendMonthly: 40, spendExempt: false })
+    expect(store.person(7)).toMatchObject({ spendDaily: null, spendMonthly: 40, spendExempt: false })
+    store.close()
+  })
+})

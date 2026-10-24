@@ -5,6 +5,7 @@ import { Chats, keyOf, UserError } from "./chats"
 import { threadParams } from "./reply"
 import { truncate } from "./format"
 import { parseAction } from "./question"
+import { SpendLimitError } from "./spend-limits"
 
 const PAGE_SIZE = 8
 
@@ -32,6 +33,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
         "/model – switch model",
         "/agent – switch agent",
         "/status – session info",
+        "/costs – what this conversation cost, and your spending",
         "/schedule – run a prompt or command on a schedule",
         "/schedules – list and manage scheduled tasks",
         "/skills – list loaded skills and sync them",
@@ -46,8 +48,9 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
   bot.command("whoami", (ctx) => ctx.reply(`Your Telegram user ID is ${ctx.from?.id}.`))
 
   bot.command("new", async (ctx) => {
-    const started = await chat.startNew(ctx)
     const prompt = ctx.match.trim()
+    if (prompt) await chat.guard(ctx.from)
+    const started = await chat.startNew(ctx)
     const text = started.topic
       ? `🆕 New conversation <code>${started.sessionID}</code>. ${prompt ? "" : "Send your first message here."}`
       : `🆕 New session <code>${started.sessionID}</code>`
@@ -171,7 +174,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
   bot.catch(async (err) => {
     const e = err.error
     console.error(`update ${err.ctx.update.update_id} failed`, e)
-    const text = e instanceof UserError ? `⚠️ ${e.message}` : `⚠️ Error: ${truncate(String((e as Error)?.message ?? e), 300)}`
+    const text = e instanceof SpendLimitError ? e.message : e instanceof UserError ? `⚠️ ${e.message}` : `⚠️ Error: ${truncate(String((e as Error)?.message ?? e), 300)}`
     await err.ctx.reply(text).catch(() => {})
   })
 

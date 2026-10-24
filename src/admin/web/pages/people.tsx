@@ -1,6 +1,7 @@
-import { useState } from "react"
-import { api, enc, type MemoryInfo, type MemoryMode, type PeopleResponse, type PersonInfo, type ThreadRow, type ToolCallsResponse } from "../api"
-import { Badge, Button, Confirm, Empty, ErrorBanner, Field, Initials, Modal, PageHeader, relTime, Segmented, Skeleton, useAction, useApi } from "../ui"
+import { useEffect, useState } from "react"
+import { api, enc, type MemoryInfo, type MemoryMode, type PeopleResponse, type PeriodSpend, type PersonInfo, type ThreadRow, type ToolCallsResponse } from "../api"
+import { money } from "../spend"
+import { Badge, Button, Confirm, Empty, ErrorBanner, Field, Initials, Modal, PageHeader, relTime, Segmented, Skeleton, Toggle, useAction, useApi } from "../ui"
 import { MEMORY_MODE_OPTIONS } from "./personas"
 import { ToolCard } from "./threads"
 
@@ -12,7 +13,7 @@ export function PeoplePage() {
     <>
       <PageHeader
         title="People"
-        subtitle="Everyone who has written to the bot, with their persona and what it remembers about them. People can also change these themselves with /persona and /memory."
+        subtitle="Everyone who has written to the bot: their persona, what it remembers about them, and what they may spend. People can change their persona and memory themselves with /persona and /memory, and see their spending with /costs."
       />
       <ErrorBanner error={error} onRetry={reload} />
       {!data ? (
@@ -86,6 +87,8 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
         </Field>
       </div>
 
+      <Spending person={p} defaults={data.defaultLimits} reload={reload} />
+
       <div className="stack">
         <div className="card-head memory-head">
           <h3>
@@ -128,6 +131,87 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
         </Modal>
       )}
     </article>
+  )
+}
+
+const amount = (v: number | null) => (v === null ? "" : String(v))
+const parseAmount = (v: string) => v.trim().replace(/^\$/, "")
+
+function Spending({ person: p, defaults, reload }: { person: PersonInfo; defaults: PeopleResponse["defaultLimits"]; reload: () => Promise<void> }) {
+  const { busy, run } = useAction()
+  const [daily, setDaily] = useState(amount(p.spendDaily))
+  const [monthly, setMonthly] = useState(amount(p.spendMonthly))
+  useEffect(() => setDaily(amount(p.spendDaily)), [p.spendDaily])
+  useEffect(() => setMonthly(amount(p.spendMonthly)), [p.spendMonthly])
+  const valid = [daily, monthly].every((v) => parseAmount(v) === "" || Number(parseAmount(v)) > 0)
+  const dirty = parseAmount(daily) !== amount(p.spendDaily) || parseAmount(monthly) !== amount(p.spendMonthly)
+  const save = (body: { spendDaily?: string | null; spendMonthly?: string | null; spendExempt?: boolean }) => run("spend", () => api("PUT", `/api/people/${p.id}`, body).then(reload), "Saved")
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (valid && dirty) void save({ spendDaily: parseAmount(daily) || null, spendMonthly: parseAmount(monthly) || null })
+  }
+  const fallback = (v: number | null) => (v === null ? "Default: no limit" : `Default: ${money(v)}`)
+
+  return (
+    <div className="stack">
+      <div className="card-head memory-head">
+        <h3>Spending</h3>
+        <label className="check small">
+          <Toggle checked={p.spendExempt} disabled={!!busy} onChange={(v) => save({ spendExempt: v })} />
+          No limits
+        </label>
+      </div>
+      {p.spend ? (
+        <div className="spend-meters">
+          <Meter label="Today" period={p.spend.day} />
+          <Meter label="This month" period={p.spend.month} />
+        </div>
+      ) : (
+        <p className="muted small">Spending couldn't be read right now.</p>
+      )}
+      {!p.spendExempt && (
+        <form className="spend-limit-form" onSubmit={submit}>
+          <Field label="Daily limit">
+            <div className="env-inline">
+              <span className="muted">$</span>
+              <input className="input mono" inputMode="decimal" placeholder={fallback(defaults.daily)} value={daily} onChange={(e) => setDaily(e.target.value)} />
+            </div>
+          </Field>
+          <Field label="Monthly limit">
+            <div className="env-inline">
+              <span className="muted">$</span>
+              <input className="input mono" inputMode="decimal" placeholder={fallback(defaults.monthly)} value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+            </div>
+          </Field>
+          <Button type="submit" busy={busy === "spend"} disabled={!valid || !dirty}>
+            Save
+          </Button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+function Meter({ label, period: p }: { label: string; period: PeriodSpend }) {
+  const share = p.limit ? p.spent / p.limit : 0
+  const state = p.limit === null ? "" : share >= 1 ? "reached" : share >= 0.8 ? "near" : ""
+  const resets = new Date(p.resetsAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+  return (
+    <div className={`spend-meter ${state}`}>
+      <div className="spend-meter-head">
+        <span className="muted small">{label}</span>
+        <span className="mono">
+          {money(p.spent)}
+          {p.limit !== null && <span className="muted"> of {money(p.limit)}</span>}
+        </span>
+      </div>
+      <div className="bar">
+        <span style={{ width: `${p.limit ? Math.min(100, Math.max(1, share * 100)) : 0}%` }} />
+      </div>
+      <span className="muted small">
+        {p.limit === null ? "No limit" : state === "reached" ? `Limit reached · resets ${resets}` : `${Math.round(share * 100)}% · resets ${resets}`}
+      </span>
+    </div>
   )
 }
 

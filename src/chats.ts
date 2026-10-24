@@ -4,6 +4,7 @@ import type { Config } from "./config"
 import { truncate } from "./format"
 import type { Attachment, Bridge } from "./opencode"
 import type { Questions } from "./question"
+import type { SpendLimits } from "./spend-limits"
 import { threadParams } from "./reply"
 import { ChatView } from "./stream"
 import type { ChatKey, Store } from "./store"
@@ -26,7 +27,13 @@ export class Chats {
     private readonly transcriber: Transcriber | undefined,
     private readonly me: () => UserFromGetMe | undefined,
     readonly questions: Questions,
+    private readonly limits?: Pick<SpendLimits, "check">,
   ) {}
+
+  /** Refuse new work from someone who has reached a spending limit. Runs before anything costs money. */
+  async guard(user: User | undefined): Promise<void> {
+    if (user && this.limits) await this.limits.check(user.id)
+  }
 
   async view(key: ChatKey): Promise<ChatView> {
     const sessionID = await this.bridge.sessionFor(key)
@@ -183,6 +190,7 @@ export class Chats {
 
   /** Prompt the thread's session. `from` is the Telegram user who wrote it; the session takes on their persona and memories. */
   async send(key: ChatKey, text: string, files: Attachment[] = [], from?: User): Promise<void> {
+    await this.guard(from)
     const view = await this.view(key)
     if (from) this.store.seePerson(from.id, [from.first_name, from.last_name].filter(Boolean).join(" ") || null, from.username ?? null)
     this.store.touch(key, from?.id)
@@ -205,12 +213,14 @@ export class Chats {
     const text = ctx.message?.text
     if (!ctx.chat || !text) return
     if (await this.answerPending(keyOf(ctx), text)) return
+    await this.guard(ctx.from)
     await this.send(await this.route(ctx, text), text, [], ctx.from)
   }
 
   async handlePhoto(ctx: Context): Promise<void> {
     const photos = ctx.message?.photo
     if (!ctx.chat || !photos?.length) return
+    await this.guard(ctx.from)
     const largest = photos[photos.length - 1]!
     const bytes = await this.download(largest.file_id, largest.file_size)
     const mime = sniffImage(bytes) ?? "image/jpeg"
@@ -223,6 +233,7 @@ export class Chats {
   async handleDocument(ctx: Context): Promise<void> {
     const doc = ctx.message?.document
     if (!ctx.chat || !doc) return
+    await this.guard(ctx.from)
     const bytes = await this.download(doc.file_id, doc.file_size)
     const name = doc.file_name ?? "file"
     const mime = sniffImage(bytes) ?? (isProbablyText(bytes) ? "text/plain" : undefined)
@@ -248,6 +259,7 @@ export class Chats {
       await ctx.reply(`🎤 Only OGG/Opus audio can be transcribed (got ${mime || "unknown"}). Record a voice note instead.`)
       return
     }
+    await this.guard(ctx.from)
     await ctx.replyWithChatAction("typing")
     const bytes = await this.download(voice.file_id, voice.file_size)
     const transcript = await this.transcriber.transcribeOgg(bytes)
