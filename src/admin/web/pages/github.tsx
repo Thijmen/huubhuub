@@ -47,6 +47,7 @@ export function GitHubPage() {
       ) : (
         <div className="stack">
           <AppCard info={data.info} onChange={reload} />
+          {data.isPublic === false && <PrivateCallout info={data.info} />}
           {data.missingAppPermissions.length > 0 && <UpgradeCallout info={data.info} missing={data.missingAppPermissions} />}
           <Installations info={data.info} installations={data.installations} onChange={reload} />
           <AgentAccess status={data} />
@@ -86,7 +87,7 @@ function ConnectCard() {
         <div>
           <div className="mcp-name">Connect GitHub</div>
           <div className="muted small">
-            Creates a private GitHub App that can read and write code, pull requests and issues, and read Actions and checks, on the repos you pick. You'll confirm it on
+            Creates a GitHub App that can read and write code, pull requests and issues, and read Actions and checks, on the repos you pick. You'll confirm it on
             GitHub, then choose where to install it.
           </div>
         </div>
@@ -139,6 +140,23 @@ function AppCard({ info, onChange }: { info: GitHubAppInfo; onChange: () => Prom
         </div>
       </div>
     </article>
+  )
+}
+
+function PrivateCallout({ info }: { info: GitHubAppInfo }) {
+  return (
+    <div className="callout callout-warn">
+      <div>
+        <strong>Only {info.owner} can install this app.</strong>
+        <p className="muted small gh-callout-text">
+          GitHub lets a private app be installed only on the account that owns it, so organizations don't show up when you install it. Choose <em>Make public</em> under
+          Advanced in the app's settings, then refresh. Others can then install it too, but that only gives the bot access to their repos, never to yours.
+        </p>
+      </div>
+      <a className="btn btn-default btn-sm" href={`${info.settingsUrl}/advanced`} target="_blank" rel="noreferrer">
+        Open Advanced ↗
+      </a>
+    </div>
   )
 }
 

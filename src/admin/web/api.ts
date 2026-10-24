@@ -230,6 +230,8 @@ export interface GitHubStatus {
   installations: GitHubInstallation[]
   missingAppPermissions: string[]
   identity: { name: string; email: string } | null
+  /** Whether other accounts (like an organization) can install the app; null when GitHub couldn't be asked. */
+  isPublic: boolean | null
   error: string | null
 }
 

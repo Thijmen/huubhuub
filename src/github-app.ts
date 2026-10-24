@@ -131,7 +131,10 @@ export class GitHubApp {
         redirect_url: `${home}/?github=created`,
         setup_url: `${home}/?github=installed`,
         setup_on_update: true,
-        public: false,
+        // Private apps can only be installed on the account that owns them, so an app made on a
+        // personal account couldn't be added to an organization. Being public only lets others
+        // install it on their own repos; the bot never gets access to yours through them.
+        public: true,
         default_permissions: APP_PERMISSIONS,
       },
     }
@@ -220,6 +223,25 @@ export class GitHubApp {
   /** The permissions the app itself asks for, as set in its settings on GitHub. */
   permissions(fresh = false): Promise<Record<string, string>> {
     return this.cached("permissions", fresh, async () => (await this.request<{ permissions?: Record<string, string> }>("GET", "/app", this.jwt())).permissions ?? {})
+  }
+
+  /**
+   * Whether accounts other than the owner can install the app. GitHub only shows a private app's
+   * public page to its owner, so an anonymous lookup 404s for private apps.
+   */
+  async isPublic(): Promise<boolean> {
+    const c = this.required()
+    // Only a yes is cached: an owner who just made the app public should see it on the next refresh.
+    const key = `public:${c.slug}`
+    if (this.cache.has(key)) return true
+    try {
+      await this.request("GET", `/apps/${encodeURIComponent(c.slug)}`)
+    } catch (err) {
+      if (err instanceof GitHubError && err.status === 404) return false
+      throw err
+    }
+    this.cache.set(key, { at: this.now(), value: true })
+    return true
   }
 
   /** The `slug[bot]` user commits are authored as. Its noreply address needs the bot user's ID. */

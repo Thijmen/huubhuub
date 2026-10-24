@@ -667,16 +667,17 @@ async function threadRows(d: Deps, rows: ChatState[]) {
 async function githubStatus(d: Deps) {
   const info = d.github.info()
   const gh = await d.githubAccess.ghVersion()
-  if (!info) return { connected: false, info: null, gh, installations: [], missingAppPermissions: [], identity: null, error: null }
+  if (!info) return { connected: false, info: null, gh, installations: [], missingAppPermissions: [], identity: null, isPublic: null, error: null }
   try {
-    const [installations, missingAppPermissions, identity] = await Promise.all([
+    const [installations, missingAppPermissions, identity, isPublic] = await Promise.all([
       d.githubAccess.installations(),
       d.githubAccess.missingAppPermissions(),
       d.github.identity().catch(() => null),
+      d.github.isPublic().catch(() => null),
     ])
-    return { connected: true, info, gh, installations, missingAppPermissions, identity, error: null }
+    return { connected: true, info, gh, installations, missingAppPermissions, identity, isPublic, error: null }
   } catch (err) {
-    return { connected: true, info, gh, installations: [], missingAppPermissions: [], identity: null, error: errorMessage(err) }
+    return { connected: true, info, gh, installations: [], missingAppPermissions: [], identity: null, isPublic: null, error: errorMessage(err) }
   }
 }
 
