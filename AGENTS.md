@@ -15,3 +15,4 @@ bun run changeset add --patch huubhuub -m "Fix voice notes being transcribed twi
 - This creates `.changeset/<random-name>.md`. Commit it with the change; edit the file if the message needs more detail.
 - Changes with nothing to release (docs, tests, CI, refactors) can skip it. If in doubt, add one.
 - Never edit `CHANGELOG.md` or the `version` in `package.json` by hand; the release pull request does that.
+- Renovate pull requests get theirs automatically (`.github/workflows/dependency-changesets.yml`): a patch bump when the update ships in the Docker image, an empty changeset otherwise. Don't add another; a pull request that already has a changeset is left alone.
