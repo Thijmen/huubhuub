@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.0.9
+
+### Patch Changes
+
+- [#16](https://github.com/Thijmen/huubhuub/pull/16) [`306d0ff`](https://github.com/Thijmen/huubhuub/commit/306d0ff2b8c8fd2ad48a5389e45f07b6c9bc15ab) Thanks [@Thijmen](https://github.com/Thijmen)! - The Docker image is now published as `ghcr.io/thijmen/huubhuub` (was `ghcr.io/thijmen/huub-v2`).
+
 ## 0.0.8
 
 ### Patch Changes
