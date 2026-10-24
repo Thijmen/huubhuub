@@ -180,7 +180,7 @@ export class ChatView {
     this.timer = undefined
     this.reply.stopTyping()
     const body = renderText(this.blocks)
-    const flushed = body ? this.reply.finalize(body) : (this.reply.dispose(), Promise.resolve())
+    const flushed = body ? this.reply.finalize(body) : this.reply.discard()
     this.blocks = []
     this.footer = ""
     this.resumed = true
