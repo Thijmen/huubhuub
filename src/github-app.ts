@@ -268,7 +268,7 @@ export class GitHubApp {
         headers: {
           accept: "application/vnd.github+json",
           "x-github-api-version": "2022-11-28",
-          "user-agent": "opencode-telegram-bot",
+          "user-agent": "huubhuub",
           ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
         },
       })

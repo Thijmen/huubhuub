@@ -1,5 +1,5 @@
 {
-  "name": "opencode-telegram-bot",
+  "name": "huubhuub",
   "module": "src/index.ts",
   "type": "module",
   "private": true,
