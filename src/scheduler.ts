@@ -6,12 +6,13 @@ const GRACE_MS = 5 * 60_000
 const MAX_SLEEP_MS = 60_000
 export const MAX_FAILURES = 3
 
-export type RunOutcome = { status: "ok" | "silent" | "failed"; error?: string; counts?: boolean }
+export type RunOutcome = { status: "ok" | "silent" | "failed"; error?: string; counts?: boolean; output?: string }
 
 export interface Runner {
-  /** Start a run and resolve once OpenCode has a session for it; `done` settles when the run ends. */
-  start(schedule: Schedule, startedAt: number): Promise<{ sessionID: string; done: Promise<RunOutcome> }>
-  notify(chatId: number, html: string): Promise<void>
+  /** Start a run and resolve once it's under way; `done` settles when the run ends. Command tasks have no session. */
+  start(schedule: Schedule, startedAt: number): Promise<{ sessionID: string | null; done: Promise<RunOutcome> }>
+  /** Tell the job's chat, or every allowlisted user for a background job. */
+  notify(chatId: number | null, html: string): Promise<void>
 }
 
 type Listener = () => void
@@ -141,13 +142,15 @@ export class Scheduler {
     let outcome: RunOutcome
     try {
       const run = await this.runner.start(s, startedAt)
-      this.store.setRunSession(runId, run.sessionID)
-      this.changed()
+      if (run.sessionID) {
+        this.store.setRunSession(runId, run.sessionID)
+        this.changed()
+      }
       outcome = await run.done
     } catch (err) {
       outcome = { status: "failed", error: err instanceof Error ? err.message : String(err) }
     }
-    this.store.finishRun(runId, outcome.status, outcome.error ?? null, this.now())
+    this.store.finishRun(runId, outcome.status, outcome.error ?? null, this.now(), outcome.output ?? null)
     const current = this.store.schedule(s.id)
     if (!current) return
     if (outcome.status !== "failed") {
@@ -159,8 +162,9 @@ export class Scheduler {
     const pause = streak >= MAX_FAILURES && !current.paused
     this.store.updateSchedule(s.id, { failStreak: streak, ...(pause ? { paused: true } : {}) })
     if (pause) {
+      const how = s.chatId === null ? "Resume it on the Schedules page of the admin UI." : "Resume it with /schedules."
       await this.runner
-        .notify(s.chatId, `⏸ <b>${escape(s.name)}</b> failed ${streak} times in a row, so I paused it. Resume it with /schedules.`)
+        .notify(s.chatId, `⏸ <b>${escape(s.name)}</b> failed ${streak} times in a row, so I paused it. ${how}`)
         .catch((err) => console.error("schedule notify failed", err))
     }
   }

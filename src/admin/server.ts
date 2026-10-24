@@ -7,11 +7,13 @@ import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
 import type { QuestionAction } from "../question"
-import { defaultName, describe, firstRun, parseWhen, SpecError, upcoming } from "../schedule-spec"
+import { describe, SpecError } from "../schedule-spec"
+import type { ScheduleService, TaskInput } from "../schedule-service"
 import type { Scheduler } from "../scheduler"
+import type { GitHubAccess } from "../github-access"
 import type { GitHubApp } from "../github-app"
 import { SkillError, type SkillSources } from "../skills"
-import type { Schedule, SchedulePatch, Store } from "../store"
+import type { Schedule, Store } from "../store"
 import { conversation, eventStream } from "./chat"
 import index from "./web/index.html"
 
@@ -23,8 +25,10 @@ interface Deps {
   bot: Bot
   chats: Chats
   scheduler: Scheduler
+  schedules: ScheduleService
   skills: SkillSources
   github: GitHubApp
+  githubAccess: GitHubAccess
   token: string
 }
 
@@ -49,7 +53,7 @@ export function startAdmin(deps: Deps) {
       const result = await handler(req, deps, server)
       return result instanceof Response ? result : json(result ?? { ok: true })
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : err instanceof SkillError ? 400 : 500
+      const status = err instanceof HttpError ? err.status : err instanceof SkillError || err instanceof SpecError ? 400 : 500
       if (status === 500) console.error(`admin ${req.method} ${new URL(req.url).pathname} failed`, err)
       return json({ error: errorMessage(err) }, status)
     }
@@ -146,8 +150,20 @@ export function startAdmin(deps: Deps) {
           if (!isEnvName(name)) throw new HttpError(400, `${name} isn't a valid variable name.`)
           if (typeof value !== "string" || !value) throw new HttpError(400, "A value is required.")
           d.settings.setEnv(name, value)
+          await d.bridge.restart()
         }),
-        DELETE: api((req, d) => void d.settings.deleteEnv(param(req, "name"))),
+        DELETE: api(async (req, d) => {
+          d.settings.deleteEnv(param(req, "name"))
+          await d.bridge.restart()
+        }),
+      },
+
+      "/api/opencode": { GET: api((req, d) => openCodeStatus(req, d)) },
+      "/api/opencode/pair": {
+        POST: api(async (req, d) => {
+          if (d.bridge.server.status !== "running") throw new HttpError(503, "OpenCode isn't running right now.")
+          return { url: await d.bridge.server.pairingLink(openCodeUrl(req, d.config)) }
+        }),
       },
 
       "/api/mcp": {
@@ -189,9 +205,23 @@ export function startAdmin(deps: Deps) {
         POST: api(async (req, d) => void (await d.bridge.host.mcp.connect({ ...d.bridge.location, server: param(req, "name") }))),
       },
 
+      "/api/github": { GET: api((_, d) => githubStatus(d)) },
+      "/api/github/default": {
+        PUT: api(async (req, d) => {
+          const { installationId } = await read<{ installationId: number | null }>(req)
+          if (installationId !== null && !(await d.github.installations()).some((i) => i.id === installationId)) {
+            throw new HttpError(400, "The app isn't installed there.")
+          }
+          d.githubAccess.setDefaultInstallation(installationId)
+        }),
+      },
       "/api/github/app": {
         GET: api((_, d) => ({ connected: d.github.connected(), info: d.github.info() })),
-        DELETE: api((_, d) => void d.github.disconnect()),
+        DELETE: api(async (_, d) => {
+          d.github.disconnect()
+          d.githubAccess.setDefaultInstallation(null)
+          await d.githubAccess.writeGitConfig()
+        }),
       },
       "/api/github/app/start": {
         POST: api(async (req, d) => {
@@ -202,7 +232,9 @@ export function startAdmin(deps: Deps) {
       "/api/github/app/convert": {
         POST: api(async (req, d) => {
           const { code, state } = await read<{ code: string; state: string }>(req)
-          return d.github.convert(code ?? "", state ?? "")
+          const info = await d.github.convert(code ?? "", state ?? "")
+          await d.githubAccess.writeGitConfig()
+          return info
         }),
       },
       "/api/github/repos": {
@@ -274,76 +306,25 @@ export function startAdmin(deps: Deps) {
       "/api/schedules": {
         GET: api((_, d) => schedules(d)),
         POST: api(async (req, d) => {
-          const body = await read<ScheduleInput & { chatId: number }>(req)
-          if (!Number.isSafeInteger(body.chatId) || !d.store.latest(body.chatId)) throw new HttpError(400, "Pick a chat the bot has talked in.")
-          const prompt = body.prompt?.trim()
-          if (!prompt) throw new HttpError(400, "Write the prompt to run.")
-          const when = specOrThrow(body.when ?? "", d)
-          await checkSelection(d, body.model ?? null, body.agent ?? null)
-          const s = d.store.createSchedule({
-            chatId: body.chatId,
-            name: body.name?.trim() || defaultName(prompt),
-            ...when,
-            prompt,
-            model: body.model || null,
-            agent: body.agent || null,
-            silent: Boolean(body.silent),
-            nextAt: firstRun(when, Date.now(), d.config.SCHEDULE_TIMEZONE),
-          })
-          d.scheduler.refresh()
+          const body = await read<TaskInput & { chatId: number | null }>(req)
+          const s = await d.schedules.create({ ...body, chatId: chatOrThrow(d, body.chatId) })
           return scheduleView(d, s)
         }),
       },
       "/api/schedules/preview": {
         POST: api(async (req, d) => {
           const { when } = await read<{ when: string }>(req)
-          const parsed = specOrThrow(when ?? "", d)
-          const tz = d.config.SCHEDULE_TIMEZONE
-          return { ...parsed, description: describe(parsed, tz), upcoming: upcoming(parsed, Date.now(), tz), timeZone: tz }
+          return d.schedules.preview(when ?? "")
         }),
       },
       "/api/schedules/:id": {
         PUT: api(async (req, d) => {
           const s = scheduleOrThrow(d, param(req, "id"))
-          const body = await read<ScheduleInput & { paused?: boolean }>(req)
-          const patch: SchedulePatch = {}
-          if (body.name !== undefined) {
-            const name = body.name.trim()
-            if (!name) throw new HttpError(400, "The name can't be empty.")
-            patch.name = name.slice(0, 80)
-          }
-          if (body.prompt !== undefined) {
-            if (!body.prompt.trim()) throw new HttpError(400, "The prompt can't be empty.")
-            patch.prompt = body.prompt.trim()
-          }
-          if (body.model !== undefined || body.agent !== undefined) {
-            await checkSelection(d, body.model ?? null, body.agent ?? null)
-            if (body.model !== undefined) patch.model = body.model || null
-            if (body.agent !== undefined) patch.agent = body.agent || null
-          }
-          if (body.silent !== undefined) patch.silent = Boolean(body.silent)
-          const now = Date.now()
-          if (body.when !== undefined) {
-            const when = specOrThrow(body.when, d)
-            Object.assign(patch, when, { nextAt: firstRun(when, now, d.config.SCHEDULE_TIMEZONE) })
-          }
-          if (body.paused !== undefined) {
-            patch.paused = body.paused
-            if (!body.paused) {
-              patch.failStreak = 0
-              const kind = patch.kind ?? s.kind
-              if (kind !== "once" && patch.nextAt === undefined) patch.nextAt = firstRun({ kind, spec: patch.spec ?? s.spec }, now, d.config.SCHEDULE_TIMEZONE)
-            }
-          }
-          const updated = d.store.updateSchedule(s.id, patch)!
-          d.scheduler.refresh()
-          return scheduleView(d, updated)
+          const body = await read<TaskInput>(req)
+          if (body.chatId !== undefined) chatOrThrow(d, body.chatId)
+          return scheduleView(d, await d.schedules.update(s, body))
         }),
-        DELETE: api((req, d) => {
-          const s = scheduleOrThrow(d, param(req, "id"))
-          d.store.deleteSchedule(s.id)
-          d.scheduler.refresh()
-        }),
+        DELETE: api((req, d) => d.schedules.delete(scheduleOrThrow(d, param(req, "id")))),
       },
       "/api/schedules/:id/run": {
         POST: api((req, d) => {
@@ -513,6 +494,7 @@ async function importEnv(d: Deps, text: string) {
   const plan = planEnvImport(entries, integrations.data)
   const values = new Map(entries.map((e) => [e.name, e.value]))
   const results: { name: string; ok: boolean; action: string; message?: string }[] = []
+  let envChanged = false
   for (const item of plan) {
     const value = values.get(item.name)!
     try {
@@ -526,13 +508,33 @@ async function importEnv(d: Deps, text: string) {
         })
       } else {
         d.settings.setEnv(item.name, value)
+        envChanged = true
       }
       results.push({ name: item.name, ok: true, action: item.action })
     } catch (err) {
       results.push({ name: item.name, ok: false, action: item.action, message: errorMessage(err) })
     }
   }
+  // OpenCode runs in its own process and only reads the environment at startup.
+  if (envChanged) await d.bridge.restart()
   return { results, models: (await d.bridge.models()).length }
+}
+
+async function openCodeStatus(req: Request, d: Deps) {
+  const s = d.bridge.server
+  return {
+    status: s.status,
+    version: s.version,
+    url: openCodeUrl(req, d.config),
+    uptime: s.startedAt && s.status === "running" ? Date.now() - s.startedAt : null,
+    restarts: s.restarts,
+  }
+}
+
+/** Where the browser reaches the OpenCode web UI: OPENCODE_PUBLIC_URL, or the admin's host on OPENCODE_PORT. */
+function openCodeUrl(req: Request, config: Config): string {
+  if (config.OPENCODE_PUBLIC_URL) return config.OPENCODE_PUBLIC_URL
+  return `http://${new URL(req.url).hostname}:${config.OPENCODE_PORT}`
 }
 
 async function fileMcpServers(d: Deps): Promise<Map<string, McpConfig>> {
@@ -568,7 +570,7 @@ async function saveMcp(d: Deps, name: string, config: McpConfig): Promise<void> 
 
 async function threads(d: Deps) {
   const rows = d.store.list(100)
-  const active = await d.bridge.host.sessions.active().catch(() => ({}) as Record<string, unknown>)
+  const active = await d.bridge.host.session.active().catch(() => ({}) as Record<string, unknown>)
   return Promise.all(
     rows.map(async (r) => {
       const s = await d.bridge.getSession(r.sessionID).catch(() => undefined)
@@ -588,21 +590,19 @@ async function threads(d: Deps) {
   )
 }
 
-interface ScheduleInput {
-  name?: string
-  when?: string
-  prompt?: string
-  model?: string | null
-  agent?: string | null
-  silent?: boolean
-}
-
-function specOrThrow(when: string, d: Deps) {
+async function githubStatus(d: Deps) {
+  const info = d.github.info()
+  const gh = await d.githubAccess.ghVersion()
+  if (!info) return { connected: false, info: null, gh, installations: [], missingAppPermissions: [], identity: null, error: null }
   try {
-    return parseWhen(when, Date.now(), d.config.SCHEDULE_TIMEZONE)
+    const [installations, missingAppPermissions, identity] = await Promise.all([
+      d.githubAccess.installations(),
+      d.githubAccess.missingAppPermissions(),
+      d.github.identity().catch(() => null),
+    ])
+    return { connected: true, info, gh, installations, missingAppPermissions, identity, error: null }
   } catch (err) {
-    if (err instanceof SpecError) throw new HttpError(400, err.message)
-    throw err
+    return { connected: true, info, gh, installations: [], missingAppPermissions: [], identity: null, error: errorMessage(err) }
   }
 }
 
@@ -612,20 +612,17 @@ function scheduleOrThrow(d: Deps, raw: string): Schedule {
   return s
 }
 
-async function checkSelection(d: Deps, model: string | null, agent: string | null): Promise<void> {
-  if (model) {
-    const slash = model.indexOf("/")
-    const known = (await d.bridge.models()).some((m) => slash > 0 && m.providerID === model.slice(0, slash) && m.id === model.slice(slash + 1))
-    if (!known) throw new HttpError(400, `${model} isn't available.`)
-  }
-  if (agent && !(await d.bridge.agents()).some((a) => a.id === agent)) throw new HttpError(400, `Unknown agent ${agent}.`)
+/** A chat to post in must be one the bot has talked in; null runs the job in the background. */
+function chatOrThrow(d: Deps, chatId: number | null | undefined): number | null {
+  if (chatId === null) return null
+  if (!Number.isSafeInteger(chatId) || !d.store.latest(chatId!)) throw new HttpError(400, "Pick a chat the bot has talked in, or run it in the background.")
+  return chatId!
 }
 
 function scheduleView(d: Deps, s: Schedule) {
-  const tz = d.config.SCHEDULE_TIMEZONE
   return {
     ...s,
-    description: describe(s, tz),
+    description: describe(s, d.config.SCHEDULE_TIMEZONE),
     running: d.scheduler.running(s.id),
     runs: d.store.runs(s.id, 15),
   }
@@ -646,7 +643,7 @@ async function chatTitle(d: Deps, id: number): Promise<string | null> {
 
 async function schedules(d: Deps) {
   const list = d.store.schedules()
-  const chatIds = [...new Set([...list.map((s) => s.chatId), ...d.store.list(1000).map((t) => t.chatId)])]
+  const chatIds = [...new Set([...list.flatMap((s) => (s.chatId === null ? [] : [s.chatId])), ...d.store.list(1000).map((t) => t.chatId)])]
   const chats = await Promise.all(chatIds.map(async (id) => ({ id, title: await chatTitle(d, id) })))
   return { timeZone: d.config.SCHEDULE_TIMEZONE, chats, schedules: list.map((s) => scheduleView(d, s)) }
 }

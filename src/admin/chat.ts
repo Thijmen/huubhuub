@@ -16,7 +16,7 @@ export async function conversation(bridge: Bridge, store: Store, questions: Ques
   const [session, page, active] = await Promise.all([
     bridge.getSession(sessionID),
     bridge.host.message.list({ sessionID, order: "desc", limit: PAGE, ...(cursor ? { cursor } : {}) }),
-    bridge.host.sessions.active().catch(() => ({}) as Record<string, unknown>),
+    bridge.host.session.active().catch(() => ({}) as Record<string, unknown>),
   ])
   const key = store.bySession(sessionID)
   return {

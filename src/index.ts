@@ -1,15 +1,20 @@
 import { autoRetry } from "@grammyjs/auto-retry"
 import { randomBytes } from "node:crypto"
 import { mkdirSync } from "node:fs"
+import { join } from "node:path"
 import { startAdmin } from "./admin/server"
+import { AgentSchedules } from "./agent-schedules"
 import { createBot } from "./bot"
 import { Chats } from "./chats"
 import { loadConfig } from "./config"
+import { GitHubAccess } from "./github-access"
 import { GitHubApp } from "./github-app"
+import { InternalApi } from "./internal"
 import { Bridge } from "./opencode"
 import { Questions, trackForms } from "./question"
 import { scheduleCommands } from "./schedule-commands"
 import { ScheduleRunner } from "./schedule-runner"
+import { ScheduleService } from "./schedule-service"
 import { Scheduler } from "./scheduler"
 import { Settings } from "./settings"
 import { skillCommands } from "./skill-commands"
@@ -24,8 +29,14 @@ const store = new Store(config.DATA_DIR)
 const settings = new Settings(config, store)
 settings.load()
 
+// The agent's processes reach back to the bot through this; it has to exist before OpenCode starts.
+const internal = new InternalApi()
+
 // Pull skill repos before OpenCode starts so the first sessions already see them. Alerts wait for the bot.
 const github = new GitHubApp(store)
+const githubAccess = new GitHubAccess(github, store, config.DATA_DIR)
+await githubAccess.writeGitConfig()
+const agentEnv = () => internal.env(githubAccess.gitConfig)
 const skills = new SkillSources(store, config.DATA_DIR, () => config.SKILL_SYNC_INTERVAL_MINUTES, github)
 const bootAlerts: string[] = []
 skills.onAlert = (html) => bootAlerts.push(html)
@@ -35,7 +46,7 @@ if (store.skillSources().length) {
 }
 
 console.log(`Starting OpenCode (workspace ${config.WORKSPACE_DIR})…`)
-const bridge = await Bridge.start(config, store, [skills.enabledDir])
+const bridge = await Bridge.start(config, store, { skillDirs: [skills.enabledDir], pluginDirs: [join(import.meta.dir, "agent-plugin")], env: agentEnv })
 
 const transcriber = Transcriber.enabled() ? new Transcriber(config) : undefined
 if (!transcriber) console.warn("No AWS credentials found; voice transcription is disabled.")
@@ -47,6 +58,15 @@ const questions = new Questions(
 bridge.subscribeAll((e) => trackForms(questions, e))
 
 const timeZone = () => config.SCHEDULE_TIMEZONE
+/** Scheduled commands get the agent's environment, plus a GitHub token for `gh` (git asks the credential helper). */
+const commandEnv = async (): Promise<Record<string, string | undefined>> => {
+  const env: Record<string, string | undefined> = { ...process.env, ...agentEnv() }
+  if (!env.GH_TOKEN && !env.GITHUB_TOKEN) {
+    const token = await githubAccess.token({ cwd: config.WORKSPACE_DIR }).catch((err) => console.error("Couldn't get a GitHub token for a scheduled command", err))
+    if (token) env.GH_TOKEN = token
+  }
+  return env
+}
 let chats!: Chats
 let scheduler!: Scheduler
 const bot = createBot(
@@ -54,7 +74,17 @@ const bot = createBot(
   bridge,
   (b) => {
     chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions)
-    scheduler = new Scheduler(store, new ScheduleRunner(b.api, bridge, chats, questions, timeZone), timeZone)
+    const runner = new ScheduleRunner({
+      api: b.api,
+      bridge,
+      chats,
+      questions,
+      timeZone,
+      allowedUsers: () => config.ALLOWED_USER_IDS,
+      workspace: config.WORKSPACE_DIR,
+      commandEnv,
+    })
+    scheduler = new Scheduler(store, runner, timeZone)
     return chats
   },
   (b, c) => {
@@ -63,6 +93,8 @@ const bot = createBot(
   },
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
+const schedules = new ScheduleService(store, scheduler, bridge, timeZone)
+internal.attach({ github: githubAccess, schedules: new AgentSchedules(store, schedules, scheduler, bridge, timeZone) })
 
 skills.onAlert = (html) => {
   for (const id of config.ALLOWED_USER_IDS) {
@@ -77,8 +109,8 @@ await bot.api.setMyCommands([
   { command: "model", description: "Switch model" },
   { command: "agent", description: "Switch agent" },
   { command: "status", description: "Session info" },
-  { command: "schedule", description: "Run a prompt on a schedule" },
-  { command: "schedules", description: "Manage scheduled prompts" },
+  { command: "schedule", description: "Run a prompt or command on a schedule" },
+  { command: "schedules", description: "Manage scheduled tasks" },
   { command: "skills", description: "List loaded skills" },
   { command: "help", description: "Show help" },
 ])
@@ -87,7 +119,7 @@ scheduler.start()
 skills.start()
 console.log(`Scheduler running (${store.schedules().length} jobs, time zone ${config.SCHEDULE_TIMEZONE})`)
 
-const admin = startAdmin({ config, bridge, store, settings, bot, chats, scheduler, skills, github, token: adminToken() })
+const admin = startAdmin({ config, bridge, store, settings, bot, chats, scheduler, schedules, skills, github, githubAccess, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
 
 function adminToken(): string {
@@ -107,6 +139,7 @@ async function shutdown(signal: string) {
   stopping = true
   console.log(`${signal} received, shutting down…`)
   admin.stop(true)
+  internal.stop()
   scheduler.stop()
   skills.stop()
   questions.dispose()

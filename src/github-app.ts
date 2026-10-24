@@ -7,6 +7,17 @@ const SETTING = "github_app"
 const STATE_TTL_MS = 10 * 60_000
 /** Installation tokens live an hour; renew a little early so a clone never starts with a dying token. */
 const TOKEN_MARGIN_MS = 5 * 60_000
+const LIST_TTL_MS = 60_000
+
+/** What a new app asks for: enough for the agent to push branches, open PRs and work on issues. */
+export const APP_PERMISSIONS: Record<string, "read" | "write"> = {
+  contents: "write",
+  pull_requests: "write",
+  issues: "write",
+  metadata: "read",
+  actions: "read",
+  checks: "read",
+}
 
 interface Credentials {
   id: number
@@ -35,6 +46,24 @@ export interface InstalledRepo {
   private: boolean
 }
 
+/** One account (user or organization) the app is installed on. */
+export interface Installation {
+  id: number
+  account: string
+  accountType: "User" | "Organization"
+  /** What the account granted, e.g. `{ contents: "write" }`. Lags behind the app until the owner accepts new permissions. */
+  permissions: Record<string, string>
+  repositorySelection: "all" | "selected"
+  htmlUrl: string
+  suspended: boolean
+}
+
+/** The bot user GitHub creates for the app; commits authored as it link to the app. */
+export interface AppIdentity {
+  name: string
+  email: string
+}
+
 export class GitHubError extends SkillError {
   constructor(
     readonly status: number,
@@ -45,12 +74,13 @@ export class GitHubError extends SkillError {
 }
 
 /**
- * The GitHub App the bot pulls skill repos with. It's created from the admin UI with the manifest flow;
- * its private key signs JWTs that are exchanged for short-lived installation tokens.
+ * The GitHub App the bot uses for skill repos and for the agent's `gh` and `git`. It's created from the
+ * admin UI with the manifest flow; its private key signs JWTs that are exchanged for short-lived installation tokens.
  */
 export class GitHubApp {
   private readonly states = new Map<string, number>()
   private readonly tokens = new Map<number, { token: string; expires: number }>()
+  private cache = new Map<string, { at: number; value: unknown }>()
 
   constructor(
     private readonly store: Store,
@@ -79,7 +109,7 @@ export class GitHubApp {
       throw new SkillError("Invalid origin.")
     }
     if (base.protocol !== "http:" && base.protocol !== "https:") throw new SkillError("Invalid origin.")
-    const appName = name?.trim() || `huub-skills-${randomBytes(2).toString("hex")}`
+    const appName = name?.trim() || `huub-${randomBytes(2).toString("hex")}`
     if (appName.length > 34) throw new SkillError("GitHub App names can be at most 34 characters.")
     const owner = org?.trim()
     if (owner && !/^[A-Za-z0-9-]+$/.test(owner)) throw new SkillError(`"${owner}" isn't a GitHub organization name.`)
@@ -102,7 +132,7 @@ export class GitHubApp {
         setup_url: `${home}/?github=installed`,
         setup_on_update: true,
         public: false,
-        default_permissions: { contents: "read", metadata: "read" },
+        default_permissions: APP_PERMISSIONS,
       },
     }
   }
@@ -111,7 +141,7 @@ export class GitHubApp {
   async convert(code: string, state: string): Promise<GitHubAppInfo> {
     const expires = this.states.get(state)
     this.states.delete(state)
-    if (!expires || expires < this.now()) throw new SkillError("This GitHub App setup expired. Start again from the Skills page.")
+    if (!expires || expires < this.now()) throw new SkillError("This GitHub App setup expired. Start again from the GitHub page.")
     if (!/^[A-Za-z0-9_-]+$/.test(code)) throw new SkillError("Invalid code from GitHub.")
     const app = await this.request<{
       id: number
@@ -134,12 +164,14 @@ export class GitHubApp {
       } satisfies Credentials),
     )
     this.tokens.clear()
+    this.cache.clear()
     return this.info()!
   }
 
   disconnect(): void {
     this.store.setSetting(SETTING, undefined)
     this.tokens.clear()
+    this.cache.clear()
   }
 
   /** A JWT that authenticates as the app itself, valid for 9 minutes. */
@@ -151,13 +183,51 @@ export class GitHubApp {
     return `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(c.pem, "base64url")}`
   }
 
-  /** An installation access token, cached until shortly before it expires. */
-  async token(installationId: number): Promise<string> {
+  /** An installation access token, cached until shortly before it expires. `minValidMs` asks for one that lasts at least that long. */
+  async token(installationId: number, minValidMs = TOKEN_MARGIN_MS): Promise<string> {
     const cached = this.tokens.get(installationId)
-    if (cached && cached.expires - TOKEN_MARGIN_MS > this.now()) return cached.token
+    if (cached && cached.expires - minValidMs > this.now()) return cached.token
     const res = await this.request<{ token: string; expires_at: string }>("POST", `/app/installations/${installationId}/access_tokens`, this.jwt())
     this.tokens.set(installationId, { token: res.token, expires: Date.parse(res.expires_at) })
     return res.token
+  }
+
+  /** Every account the app is installed on, refreshed at most once a minute. */
+  installations(fresh = false): Promise<Installation[]> {
+    return this.cached("installations", fresh, async () => {
+      const list = await this.request<
+        {
+          id: number
+          account: { login: string; type: string } | null
+          permissions: Record<string, string>
+          repository_selection: "all" | "selected"
+          html_url: string
+          suspended_at: string | null
+        }[]
+      >("GET", "/app/installations?per_page=100", this.jwt())
+      return list.map((i) => ({
+        id: i.id,
+        account: i.account?.login ?? String(i.id),
+        accountType: i.account?.type === "Organization" ? ("Organization" as const) : ("User" as const),
+        permissions: i.permissions ?? {},
+        repositorySelection: i.repository_selection,
+        htmlUrl: i.html_url,
+        suspended: Boolean(i.suspended_at),
+      }))
+    })
+  }
+
+  /** The permissions the app itself asks for, as set in its settings on GitHub. */
+  permissions(fresh = false): Promise<Record<string, string>> {
+    return this.cached("permissions", fresh, async () => (await this.request<{ permissions?: Record<string, string> }>("GET", "/app", this.jwt())).permissions ?? {})
+  }
+
+  /** The `slug[bot]` user commits are authored as. Its noreply address needs the bot user's ID. */
+  async identity(): Promise<AppIdentity> {
+    const c = this.required()
+    const login = `${c.slug}[bot]`
+    const user = await this.cached(`identity:${c.slug}`, false, () => this.request<{ id: number }>("GET", `/users/${encodeURIComponent(login)}`), Infinity)
+    return { name: login, email: `${user.id}+${login}@users.noreply.github.com` }
   }
 
   /** The installation that covers `owner/repo`, or `null` if the app isn't installed there. */
@@ -172,9 +242,10 @@ export class GitHubApp {
 
   /** Every repo the app can read, across all its installations. */
   async repositories(): Promise<InstalledRepo[]> {
-    const installations = await this.request<{ id: number }[]>("GET", "/app/installations?per_page=100", this.jwt())
+    const installations = await this.installations(true)
     const out: InstalledRepo[] = []
-    for (const { id } of installations) {
+    for (const { id, suspended } of installations) {
+      if (suspended) continue
       const token = await this.token(id)
       for (let page = 1; ; page++) {
         const res = await this.request<{ repositories: { full_name: string; default_branch: string; private: boolean }[] }>(
@@ -209,6 +280,14 @@ export class GitHubApp {
     return body as T
   }
 
+  private async cached<T>(key: string, fresh: boolean, load: () => Promise<T>, ttl = LIST_TTL_MS): Promise<T> {
+    const hit = this.cache.get(key)
+    if (hit && !fresh && this.now() - hit.at < ttl) return hit.value as T
+    const value = await load()
+    this.cache.set(key, { at: this.now(), value })
+    return value
+  }
+
   private credentials(): Credentials | undefined {
     const raw = this.store.getSetting(SETTING)
     return raw ? (JSON.parse(raw) as Credentials) : undefined
@@ -216,7 +295,7 @@ export class GitHubApp {
 
   private required(): Credentials {
     const c = this.credentials()
-    if (!c) throw new SkillError("Connect the GitHub App on the Skills page first.")
+    if (!c) throw new SkillError("Connect the GitHub App on the GitHub page first.")
     return c
   }
 }

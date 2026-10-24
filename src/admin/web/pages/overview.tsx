@@ -1,5 +1,5 @@
-import type { Overview } from "../api"
-import { Badge, duration, ErrorBanner, PageHeader, Skeleton, useApi } from "../ui"
+import { openOpenCode, type OpenCodeStatus, type Overview } from "../api"
+import { Badge, Button, duration, ErrorBanner, PageHeader, Skeleton, useAction, useApi } from "../ui"
 
 type Go = (tab: "providers" | "mcp" | "threads" | "settings" | "env") => void
 
@@ -70,6 +70,8 @@ export function OverviewPage({ go }: { go: Go }) {
             <Stat label="Conversations" value={data.conversations} onClick={() => go("threads")} />
           </div>
 
+          <OpenCodeCard />
+
           <div className="grid-2">
             <section className="card">
               <div className="card-head">
@@ -120,6 +122,43 @@ export function OverviewPage({ go }: { go: Go }) {
         </>
       )}
     </>
+  )
+}
+
+function OpenCodeCard() {
+  const { data } = useApi<OpenCodeStatus>("/api/opencode", 15000)
+  const { busy, run } = useAction()
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h3>OpenCode</h3>
+        <Button size="sm" busy={!!busy} disabled={data?.status !== "running"} onClick={() => void run("open", openOpenCode)}>
+          Open web UI ↗
+        </Button>
+      </div>
+      <p className="muted">
+        The server running every conversation. Its web UI shows the same sessions, files and terminal, which helps when debugging.
+      </p>
+      {data && (
+        <div className="opencode-meta">
+          <OpenCodeBadge status={data.status} />
+          <code>{data.url}</code>
+          {data.version && <span className="muted">v{data.version}</span>}
+          {data.uptime !== null && <span className="muted">up {duration(data.uptime)}</span>}
+          {data.restarts > 0 && <span className="muted">{data.restarts} crash restart{data.restarts === 1 ? "" : "s"}</span>}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function OpenCodeBadge({ status }: { status: OpenCodeStatus["status"] }) {
+  if (status === "running") return <Badge tone="ok">running</Badge>
+  if (status === "stopped") return <Badge tone="error">stopped</Badge>
+  return (
+    <Badge tone="warn" pulse>
+      {status}
+    </Badge>
   )
 }
 

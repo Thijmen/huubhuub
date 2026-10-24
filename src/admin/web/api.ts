@@ -37,6 +37,21 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 
 export const enc = encodeURIComponent
 
+/** Open the OpenCode web UI in a new tab, signed in through a one-time pairing link. */
+export async function openOpenCode(): Promise<void> {
+  // Open the tab during the click so popup blockers allow it, then point it at the link once we have one.
+  const tab = window.open("", "_blank")
+  if (tab) tab.opener = null
+  try {
+    const { url } = await api<{ url: string }>("POST", "/api/opencode/pair")
+    if (tab) tab.location.href = url
+    else location.href = url
+  } catch (err) {
+    tab?.close()
+    throw err
+  }
+}
+
 /** Read a server-sent event stream with the auth header, which EventSource can't send. */
 export async function stream(path: string, onEvent: (event: string, data: unknown) => void, signal: AbortSignal): Promise<void> {
   const res = await fetch(path, { headers: { authorization: `Bearer ${auth.get()}` }, signal })
@@ -110,6 +125,14 @@ export interface Overview {
 }
 
 export type McpStatus = "connected" | "pending" | "disabled" | "failed" | "needs_auth"
+
+export interface OpenCodeStatus {
+  status: "starting" | "running" | "restarting" | "stopped"
+  version: string | null
+  url: string
+  uptime: number | null
+  restarts: number
+}
 
 export type McpConfig =
   | {
@@ -187,6 +210,29 @@ export interface InstalledRepo {
   added: boolean
 }
 
+export interface GitHubInstallation {
+  id: number
+  account: string
+  accountType: "User" | "Organization"
+  permissions: Record<string, string>
+  repositorySelection: "all" | "selected"
+  htmlUrl: string
+  suspended: boolean
+  missing: string[]
+  isDefault: boolean
+}
+
+export interface GitHubStatus {
+  connected: boolean
+  info: GitHubAppInfo | null
+  /** `gh --version`, or null when it isn't installed. */
+  gh: string | null
+  installations: GitHubInstallation[]
+  missingAppPermissions: string[]
+  identity: { name: string; email: string } | null
+  error: string | null
+}
+
 export interface SettingInfo {
   key: "DEFAULT_MODEL" | "DEFAULT_AGENT" | "ALLOWED_USER_IDS" | "THREAD_MODE" | "TELEGRAM_STREAMING" | "QUESTION_TIMEOUT_MINUTES" | "SCHEDULE_TIMEZONE" | "SKILL_SYNC_INTERVAL_MINUTES"
   value: string
@@ -210,21 +256,27 @@ export interface ScheduleRun {
   endedAt: number | null
   status: RunStatus
   error: string | null
+  output: string | null
 }
+
+export type TaskType = "prompt" | "command"
 
 export interface ScheduleInfo {
   id: number
-  chatId: number
+  chatId: number | null
   name: string
   kind: "cron" | "interval" | "once"
   spec: string
+  type: TaskType
   prompt: string
+  command: string | null
   model: string | null
   agent: string | null
   silent: boolean
   paused: boolean
   failStreak: number
   nextAt: number | null
+  createdBy: "user" | "agent"
   createdAt: number
   description: string
   running: boolean
