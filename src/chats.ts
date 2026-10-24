@@ -1,6 +1,7 @@
 import type { Api, Context } from "grammy"
 import type { Chat, User, UserFromGetMe } from "grammy/types"
 import type { Config } from "./config"
+import { messageText } from "./entities"
 import { truncate } from "./format"
 import type { Attachment, Bridge } from "./opencode"
 import type { Questions } from "./question"
@@ -210,11 +211,13 @@ export class Chats {
   }
 
   async handleText(ctx: Context): Promise<void> {
-    const text = ctx.message?.text
-    if (!ctx.chat || !text) return
+    const plain = ctx.message?.text
+    if (!ctx.chat || !plain) return
+    // Links and code survive as Markdown; the topic preview stays plain text.
+    const text = messageText(ctx)
     if (await this.answerPending(keyOf(ctx), text)) return
     await this.guard(ctx.from)
-    await this.send(await this.route(ctx, text), text, [], ctx.from)
+    await this.send(await this.route(ctx, plain), text, [], ctx.from)
   }
 
   async handlePhoto(ctx: Context): Promise<void> {
@@ -224,8 +227,8 @@ export class Chats {
     const largest = photos[photos.length - 1]!
     const bytes = await this.download(largest.file_id, largest.file_size)
     const mime = sniffImage(bytes) ?? "image/jpeg"
-    const caption = ctx.message?.caption || "Describe this image."
-    await this.send(await this.route(ctx, `🖼 ${caption}`), caption, [
+    const caption = messageText(ctx) || "Describe this image."
+    await this.send(await this.route(ctx, `🖼 ${ctx.message?.caption || caption}`), caption, [
       { uri: toDataUri(bytes, mime), name: `photo.${mime.split("/")[1]}` },
     ], ctx.from)
   }
@@ -243,8 +246,8 @@ export class Chats {
       )
       return
     }
-    const caption = ctx.message?.caption || (IMAGE_TYPES.has(mime) ? "Describe this image." : `Take a look at ${name}.`)
-    await this.send(await this.route(ctx, `📎 ${name}: ${caption}`), caption, [{ uri: toDataUri(bytes, mime), name }], ctx.from)
+    const caption = messageText(ctx) || (IMAGE_TYPES.has(mime) ? "Describe this image." : `Take a look at ${name}.`)
+    await this.send(await this.route(ctx, `📎 ${name}: ${ctx.message?.caption || caption}`), caption, [{ uri: toDataUri(bytes, mime), name }], ctx.from)
   }
 
   async handleVoice(ctx: Context): Promise<void> {
@@ -278,7 +281,8 @@ export class Chats {
       ...threadParams(key),
       ...(key.threadId === keyOf(ctx).threadId ? { reply_parameters: { message_id: ctx.message!.message_id } } : {}),
     })
-    const text = ctx.message?.caption ? `${ctx.message.caption}\n\n${transcript}` : transcript
+    const caption = messageText(ctx)
+    const text = caption ? `${caption}\n\n${transcript}` : transcript
     await this.send(key, text, [], ctx.from)
   }
 

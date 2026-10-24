@@ -3,6 +3,7 @@ import type { Config } from "./config"
 import type { Bridge } from "./opencode"
 import { Chats, keyOf, UserError } from "./chats"
 import { threadParams } from "./reply"
+import { commandArgs } from "./entities"
 import { truncate } from "./format"
 import { parseAction } from "./question"
 import { SpendLimitError } from "./spend-limits"
@@ -48,7 +49,7 @@ export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => C
   bot.command("whoami", (ctx) => ctx.reply(`Your Telegram user ID is ${ctx.from?.id}.`))
 
   bot.command("new", async (ctx) => {
-    const prompt = ctx.match.trim()
+    const prompt = commandArgs(ctx)
     if (prompt) await chat.guard(ctx.from)
     const started = await chat.startNew(ctx)
     const text = started.topic
