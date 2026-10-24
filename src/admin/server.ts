@@ -146,8 +146,20 @@ export function startAdmin(deps: Deps) {
           if (!isEnvName(name)) throw new HttpError(400, `${name} isn't a valid variable name.`)
           if (typeof value !== "string" || !value) throw new HttpError(400, "A value is required.")
           d.settings.setEnv(name, value)
+          await d.bridge.restart()
         }),
-        DELETE: api((req, d) => void d.settings.deleteEnv(param(req, "name"))),
+        DELETE: api(async (req, d) => {
+          d.settings.deleteEnv(param(req, "name"))
+          await d.bridge.restart()
+        }),
+      },
+
+      "/api/opencode": { GET: api((req, d) => openCodeStatus(req, d)) },
+      "/api/opencode/pair": {
+        POST: api(async (req, d) => {
+          if (d.bridge.server.status !== "running") throw new HttpError(503, "OpenCode isn't running right now.")
+          return { url: await d.bridge.server.pairingLink(openCodeUrl(req, d.config)) }
+        }),
       },
 
       "/api/mcp": {
@@ -513,6 +525,7 @@ async function importEnv(d: Deps, text: string) {
   const plan = planEnvImport(entries, integrations.data)
   const values = new Map(entries.map((e) => [e.name, e.value]))
   const results: { name: string; ok: boolean; action: string; message?: string }[] = []
+  let envChanged = false
   for (const item of plan) {
     const value = values.get(item.name)!
     try {
@@ -526,13 +539,33 @@ async function importEnv(d: Deps, text: string) {
         })
       } else {
         d.settings.setEnv(item.name, value)
+        envChanged = true
       }
       results.push({ name: item.name, ok: true, action: item.action })
     } catch (err) {
       results.push({ name: item.name, ok: false, action: item.action, message: errorMessage(err) })
     }
   }
+  // OpenCode runs in its own process and only reads the environment at startup.
+  if (envChanged) await d.bridge.restart()
   return { results, models: (await d.bridge.models()).length }
+}
+
+async function openCodeStatus(req: Request, d: Deps) {
+  const s = d.bridge.server
+  return {
+    status: s.status,
+    version: s.version,
+    url: openCodeUrl(req, d.config),
+    uptime: s.startedAt && s.status === "running" ? Date.now() - s.startedAt : null,
+    restarts: s.restarts,
+  }
+}
+
+/** Where the browser reaches the OpenCode web UI: OPENCODE_PUBLIC_URL, or the admin's host on OPENCODE_PORT. */
+function openCodeUrl(req: Request, config: Config): string {
+  if (config.OPENCODE_PUBLIC_URL) return config.OPENCODE_PUBLIC_URL
+  return `http://${new URL(req.url).hostname}:${config.OPENCODE_PORT}`
 }
 
 async function fileMcpServers(d: Deps): Promise<Map<string, McpConfig>> {
@@ -568,7 +601,7 @@ async function saveMcp(d: Deps, name: string, config: McpConfig): Promise<void> 
 
 async function threads(d: Deps) {
   const rows = d.store.list(100)
-  const active = await d.bridge.host.sessions.active().catch(() => ({}) as Record<string, unknown>)
+  const active = await d.bridge.host.session.active().catch(() => ({}) as Record<string, unknown>)
   return Promise.all(
     rows.map(async (r) => {
       const s = await d.bridge.getSession(r.sessionID).catch(() => undefined)

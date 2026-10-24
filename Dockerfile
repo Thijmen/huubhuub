@@ -1,7 +1,9 @@
 FROM oven/bun:1.4 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production \
+  # The opencode binary is copied into @opencode/cli by its postinstall; the image is glibc, so drop the musl build.
+  && rm -rf node_modules/@opencode/cli-*-musl
 
 FROM oven/bun:1.4
 # Tools the agent commonly shells out to.
@@ -27,6 +29,6 @@ ENV NODE_ENV=production \
 RUN mkdir -p /workspace /data && chown -R bun:bun /workspace /data
 USER bun
 VOLUME ["/workspace", "/data"]
-EXPOSE 8080
+EXPOSE 8080 4196
 
 CMD ["bun", "src/index.ts"]
