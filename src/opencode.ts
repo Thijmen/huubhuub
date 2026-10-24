@@ -2,6 +2,7 @@ import { OpenCode, type OpenCodeEvent } from "@opencode/sdk"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseModelRef, type Config } from "./config"
+import { stripJsonComments } from "./mcp-import"
 import type { ChatKey, Store } from "./store"
 
 export type Host = Awaited<ReturnType<typeof OpenCode.create>>
@@ -10,8 +11,14 @@ export type SessionEvent =
   | Extract<OpenCodeEvent, { type: "form.created" }>
 export type McpConfig = Parameters<Host["mcp"]["add"]>[0]["config"]
 type Listener = (event: SessionEvent) => void
+type Message = Awaited<ReturnType<Host["message"]["list"]>>["data"][number]
 type ModelRef = { providerID: string; id: string }
 type Carry = { model?: ModelRef; agent?: string }
+
+/** One piece of an assistant reply as stored by OpenCode. */
+export type TranscriptBlock =
+  | { kind: "text"; text: string }
+  | { kind: "tool"; id: string; name: string; input: Record<string, unknown> | undefined; status: "running" | "ok" | "error" }
 
 export interface Attachment {
   uri: string
@@ -22,6 +29,7 @@ export interface Attachment {
 export class Bridge {
   private listeners = new Map<string, Set<Listener>>()
   private global = new Set<Listener>()
+  private resync = new Set<() => void>()
   private abort = new AbortController()
   private constructor(
     readonly host: Host,
@@ -29,11 +37,12 @@ export class Bridge {
     private readonly store: Store,
   ) {}
 
-  static async start(config: Config, store: Store): Promise<Bridge> {
+  /** `skillDirs` are added to the config's `skills` paths; OpenCode watches them and reloads on change. */
+  static async start(config: Config, store: Store, skillDirs: string[] = []): Promise<Bridge> {
     const host = await OpenCode.create({
       app: { name: "telegram-bot" },
       database: { path: join(config.DATA_DIR, "opencode.sqlite") },
-      config: existsSync(configFile()) ? { content: readFileSync(configFile(), "utf8") } : undefined,
+      config: { content: configContent(skillDirs) },
       log: {
         level: config.OPENCODE_LOG_LEVEL,
         emit: (e) => console.error(`[opencode:${e.level}] ${e.message}`, e.attributes ?? "", e.cause ?? ""),
@@ -86,9 +95,13 @@ export class Bridge {
   }
 
   private async pump(): Promise<void> {
+    let reconnect = false
     while (!this.abort.signal.aborted) {
       try {
         for await (const event of this.host.events.subscribe({ signal: this.abort.signal })) {
+          // Events emitted while the stream was down are not replayed; let views catch up from storage.
+          if (reconnect) for (const fn of this.resync) fn()
+          reconnect = false
           const sessionID = sessionOf(event)
           if (!sessionID) continue
           for (const fn of [...this.global, ...(this.listeners.get(sessionID) ?? [])]) {
@@ -103,6 +116,7 @@ export class Bridge {
         if (this.abort.signal.aborted) return
         console.error("event stream failed, resubscribing", err)
       }
+      reconnect = true
       await Bun.sleep(1000)
     }
   }
@@ -111,6 +125,12 @@ export class Bridge {
   subscribeAll(fn: Listener): () => void {
     this.global.add(fn)
     return () => this.global.delete(fn)
+  }
+
+  /** Called after the event stream reconnects, when events may have been missed. */
+  onResync(fn: () => void): () => void {
+    this.resync.add(fn)
+    return () => this.resync.delete(fn)
   }
 
   subscribe(sessionID: string, fn: Listener): () => void {
@@ -188,6 +208,22 @@ export class Bridge {
     return this.host.sessions.prompt({ sessionID, text, files, delivery: "queue" })
   }
 
+  /** The assistant output since the latest user message, as stored by OpenCode. */
+  async transcript(sessionID: string): Promise<TranscriptBlock[]> {
+    const page = await this.host.message.list({ sessionID, order: "desc", limit: 50 })
+    const since: Message[] = []
+    for (const m of page.data) {
+      if (m.type === "user") break
+      since.push(m)
+    }
+    return since.reverse().flatMap(toBlocks)
+  }
+
+  /** Whether OpenCode is still executing the session. */
+  async isActive(sessionID: string): Promise<boolean> {
+    return sessionID in (await this.host.sessions.active())
+  }
+
   replyForm(sessionID: string, formID: string, answer: Record<string, string | string[]>) {
     return this.host.sessions.form.reply({ sessionID, formID, answer })
   }
@@ -224,11 +260,26 @@ export class Bridge {
   }
 }
 
+function toBlocks(m: Message): TranscriptBlock[] {
+  if (m.type !== "assistant") return []
+  return m.content.flatMap((c): TranscriptBlock[] => {
+    if (c.type === "text") return [{ kind: "text", text: c.text }]
+    if (c.type !== "tool") return []
+    const status = c.state.status === "completed" ? "ok" : c.state.status === "error" ? "error" : "running"
+    return [{ kind: "tool", id: c.id, name: c.name, input: c.state.input as Record<string, unknown> | undefined, status }]
+  })
+}
+
 /** Most events carry `data.sessionID`; `form.created` nests it in the form. */
 function sessionOf(event: OpenCodeEvent): string | undefined {
   const data = (event as { data?: { sessionID?: unknown; form?: { sessionID?: unknown } } }).data
   const id = data?.sessionID ?? data?.form?.sessionID
   return typeof id === "string" ? id : undefined
+}
+
+function configContent(skillDirs: string[]): string {
+  const doc = existsSync(configFile()) ? (JSON.parse(stripJsonComments(readFileSync(configFile(), "utf8"))) as { skills?: string[] }) : {}
+  return JSON.stringify({ ...doc, skills: [...(doc.skills ?? []), ...skillDirs] })
 }
 
 export function configFile(): string {

@@ -1521,6 +1521,70 @@ kbd {
   margin-left: 42px;
 }
 
+/* Skills */
+
+.gh-app {
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.gh-app-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.gh-app-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.gh-app-form .row-end {
+  grid-column: 1 / -1;
+}
+
+.gh-app a.btn {
+  text-decoration: none;
+}
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0 0 50px;
+  border-top: 1px solid var(--line);
+}
+
+.skill-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.skill-row.disabled .skill-info {
+  opacity: 0.55;
+}
+
+.skill-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+}
+
 /* Settings */
 
 .settings {
@@ -1949,6 +2013,14 @@ kbd {
     flex-direction: column;
     align-items: flex-start;
   }
+  .skill-list {
+    margin-left: 0;
+  }
+
+  .gh-app-form {
+    grid-template-columns: 1fr;
+  }
+
   .mcp-foot {
     margin-left: 0;
   }

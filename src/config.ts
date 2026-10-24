@@ -20,6 +20,7 @@ const userIds = z
   .pipe(z.array(z.number().int().positive()))
 
 const DEFAULT_QUESTION_TIMEOUT = 10
+const DEFAULT_SKILL_SYNC_INTERVAL = 60
 
 const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
@@ -29,6 +30,7 @@ const schema = z.object({
   DEFAULT_MODEL: z.string().optional(),
   DEFAULT_AGENT: z.string().optional(),
   THREAD_MODE: z.enum(["auto", "off"]).default("auto"),
+  TELEGRAM_STREAMING: z.enum(["draft", "edit"]).default("draft"),
   OPENCODE_LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("warn"),
   TRANSCRIBE_REGION: z.string().optional(),
   TRANSCRIBE_LANGUAGE: z.string().optional(),
@@ -42,12 +44,13 @@ const schema = z.object({
     .string()
     .default(() => serverTimeZone())
     .refine(isTimeZone, "must be an IANA time zone such as Europe/Amsterdam"),
+  SKILL_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(DEFAULT_SKILL_SYNC_INTERVAL),
 })
 
 export type Config = z.infer<typeof schema>
 
 /** Settings the admin UI can change at runtime. They are stored in SQLite and override the environment. */
-export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE"] as const
+export const RUNTIME_SETTINGS = ["DEFAULT_MODEL", "DEFAULT_AGENT", "ALLOWED_USER_IDS", "THREAD_MODE", "TELEGRAM_STREAMING", "QUESTION_TIMEOUT_MINUTES", "SCHEDULE_TIMEZONE", "SKILL_SYNC_INTERVAL_MINUTES"] as const
 export type RuntimeSetting = (typeof RUNTIME_SETTINGS)[number]
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -74,6 +77,10 @@ export function applySetting(config: Config, key: RuntimeSetting, value: string 
       if (raw && raw !== "auto" && raw !== "off") throw new Error('Thread mode must be "auto" or "off".')
       config.THREAD_MODE = raw === "off" ? "off" : "auto"
       break
+    case "TELEGRAM_STREAMING":
+      if (raw && raw !== "draft" && raw !== "edit") throw new Error('Streaming must be "draft" or "edit".')
+      config.TELEGRAM_STREAMING = raw === "edit" ? "edit" : "draft"
+      break
     case "DEFAULT_MODEL":
       if (raw) parseModelRef(raw)
       config.DEFAULT_MODEL = raw || undefined
@@ -91,6 +98,12 @@ export function applySetting(config: Config, key: RuntimeSetting, value: string 
       const tz = raw.trim() || serverTimeZone()
       if (!isTimeZone(tz)) throw new Error(`"${tz}" isn't a time zone. Use an IANA name such as Europe/Amsterdam.`)
       config.SCHEDULE_TIMEZONE = tz
+      break
+    }
+    case "SKILL_SYNC_INTERVAL_MINUTES": {
+      const minutes = raw ? Number(raw) : DEFAULT_SKILL_SYNC_INTERVAL
+      if (!Number.isInteger(minutes) || minutes < 0) throw new Error("Skill sync interval must be a whole number of minutes (0 turns it off).")
+      config.SKILL_SYNC_INTERVAL_MINUTES = minutes
       break
     }
   }
