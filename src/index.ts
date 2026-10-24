@@ -64,10 +64,10 @@ bridge.subscribeAll((e) => trackForms(questions, e))
 
 const timeZone = () => config.SCHEDULE_TIMEZONE
 /** Scheduled commands get the agent's environment, plus a GitHub token for `gh` (git asks the credential helper). */
-const commandEnv = async (): Promise<Record<string, string | undefined>> => {
+const commandEnv = async (command: string): Promise<Record<string, string | undefined>> => {
   const env: Record<string, string | undefined> = { ...process.env, ...agentEnv() }
   if (!env.GH_TOKEN && !env.GITHUB_TOKEN) {
-    const token = await githubAccess.token({ cwd: config.WORKSPACE_DIR }).catch((err) => console.error("Couldn't get a GitHub token for a scheduled command", err))
+    const token = await githubAccess.token({ command, cwd: config.WORKSPACE_DIR }).catch((err) => console.error("Couldn't get a GitHub token for a scheduled command", err))
     if (token) env.GH_TOKEN = token
   }
   return env

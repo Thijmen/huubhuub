@@ -42,7 +42,7 @@ export class InternalApi {
         "/github/token": {
           GET: guard(async (req, d) => {
             const q = new URL(req.url).searchParams
-            const token = await d.github.token({ owner: q.get("owner") ?? undefined, cwd: q.get("cwd") ?? undefined, strict: q.get("strict") === "1" })
+            const token = await d.github.token({ owner: q.get("owner") ?? undefined, command: q.get("command") ?? undefined, cwd: q.get("cwd") ?? undefined, strict: q.get("strict") === "1" })
             return token ? new Response(token, { headers: { "content-type": "text/plain" } }) : new Response(null, { status: 204 })
           }),
         },

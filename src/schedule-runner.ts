@@ -27,7 +27,7 @@ export interface RunnerDeps {
   allowedUsers: () => number[]
   workspace: string
   /** The environment commands run with: the agent's, plus a GitHub token when the app is connected. */
-  commandEnv: () => Promise<Record<string, string | undefined>>
+  commandEnv: (command: string) => Promise<Record<string, string | undefined>>
 }
 
 /** Runs scheduled tasks: prompts in a fresh session, or shell commands in the workspace. Reports them in Telegram unless they run in the background. */
@@ -57,7 +57,7 @@ export class ScheduleRunner implements Runner {
   }
 
   private exec(command: string): Promise<CommandResult> {
-    return this.d.commandEnv().then((env) => runCommand(command, { cwd: this.d.workspace, env, timeoutMs: COMMAND_TIMEOUT_MS }))
+    return this.d.commandEnv(command).then((env) => runCommand(command, { cwd: this.d.workspace, env, timeoutMs: COMMAND_TIMEOUT_MS }))
   }
 
   private async runCommandTask(s: Schedule, command: string): Promise<RunOutcome> {

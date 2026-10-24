@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CREDENTIAL_HELPER, GitHubAccess, githubOwner, gitConfigText, missingPermissions } from "./github-access"
+import { CREDENTIAL_HELPER, GitHubAccess, githubOwner, gitConfigText, mentionedAccount, missingPermissions } from "./github-access"
 import type { GitHubApp, Installation } from "./github-app"
 import { InternalApi } from "./internal"
 import { Store } from "./store"
@@ -85,6 +85,16 @@ describe("GitHubAccess", () => {
     expect(await access.token({ cwd: dir, strict: true })).toBeNull()
   })
 
+  test("uses the account a command names, before the checkout's owner and the default", async () => {
+    app.list = [installation(1, "Thijmen"), installation(2, "acme")]
+    const repo = join(dir, "repo")
+    await Bun.$`git init -q ${repo} && git -C ${repo} remote add origin https://github.com/Thijmen/site.git`.quiet()
+    expect(await access.token({ command: "gh repo clone acme/widgets", cwd: dir })).toBe("tok-2")
+    expect(await access.token({ command: "gh pr list -R acme/widgets", cwd: repo })).toBe("tok-2")
+    expect(await access.token({ command: "gh pr list", cwd: repo })).toBe("tok-1")
+    expect(await access.token({ command: "ls /home/acme/x", cwd: dir })).toBe("tok-1")
+  })
+
   test("flags permissions an installation hasn't granted", async () => {
     app.list = [installation(1, "Thijmen", { permissions: { contents: "read", metadata: "read", issues: "write", pull_requests: "admin" } })]
     const [i] = await access.installations()
@@ -141,6 +151,20 @@ describe("helpers", () => {
     expect(githubOwner("git@github.com:acme/widgets.git")).toBe("acme")
     expect(githubOwner("ssh://git@github.com/acme/widgets.git")).toBe("acme")
     expect(githubOwner("https://gitlab.com/acme/widgets.git")).toBeNull()
+  })
+
+  test("mentionedAccount finds owners in gh and git commands", () => {
+    const accounts = ["Thijmen", "acme"]
+    expect(mentionedAccount("gh repo clone acme/widgets", accounts)).toBe("acme")
+    expect(mentionedAccount("gh repo list ACME --limit 50", accounts)).toBe("acme")
+    expect(mentionedAccount("gh api repos/acme/widgets/pulls", accounts)).toBe("acme")
+    expect(mentionedAccount("gh api orgs/acme/repos", accounts)).toBe("acme")
+    expect(mentionedAccount("git clone https://github.com/acme/widgets.git", accounts)).toBe("acme")
+    expect(mentionedAccount("gh search repos --owner=acme bot", accounts)).toBe("acme")
+    expect(mentionedAccount("gh pr create -R 'acme/w' && echo Thijmen/x", accounts)).toBe("acme")
+    expect(mentionedAccount("cat /home/acme/notes.md", accounts)).toBeNull()
+    expect(mentionedAccount("gh repo view acme-labs/x", accounts)).toBeNull()
+    expect(mentionedAccount("gh pr list", accounts)).toBeNull()
   })
 
   test("missingPermissions compares access levels", () => {

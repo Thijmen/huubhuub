@@ -194,7 +194,7 @@ function Installations({ info, installations, onChange }: { info: GitHubAppInfo;
     <article className="card flush">
       <div className="card-head gh-installs-head">
         <h3>Installed on</h3>
-        <span className="muted small">git uses whichever account owns the repo. gh does too, inside a checkout; elsewhere it uses the default.</span>
+        <span className="muted small">git uses whichever account owns the repo. gh uses the account a command names (like acme/repo), else the checkout's owner, else the default.</span>
       </div>
       <table className="table">
         <tbody>
