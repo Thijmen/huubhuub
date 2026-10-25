@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar"
 import { useEffect } from "react"
 import { useNotificationTaps } from "@/lib/push"
 import { SessionProvider, useSession } from "@/lib/session"
+import { UpdatesProvider } from "@/lib/updates"
 import { font, useTheme } from "@/theme"
 
 void SplashScreen.preventAutoHideAsync()
@@ -12,7 +13,9 @@ void SplashScreen.preventAutoHideAsync()
 export default function RootLayout() {
   return (
     <SessionProvider>
-      <Root />
+      <UpdatesProvider>
+        <Root />
+      </UpdatesProvider>
     </SessionProvider>
   )
 }

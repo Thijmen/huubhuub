@@ -8,6 +8,7 @@ import { Halo } from "@/components/art"
 import { ActionRow, InfoRow, LinkRow, Section } from "@/components/settings-ui"
 import { t } from "@/lib/i18n"
 import { useSession } from "@/lib/session"
+import { useAppUpdate } from "@/lib/updates"
 import { font, space, useTheme } from "@/theme"
 
 export default function SettingsScreen() {
@@ -16,6 +17,7 @@ export default function SettingsScreen() {
   const [push, setPush] = useState<boolean | null>(null)
   const [updateNote, setUpdateNote] = useState<string | null>(null)
   const telegram = useTelegramLink()
+  const { apk } = useAppUpdate()
 
   useEffect(() => {
     void Notifications.getPermissionsAsync().then((p) => setPush(p.status === "granted"))
@@ -68,6 +70,7 @@ export default function SettingsScreen() {
         </Text>
       )}
       <Section title={t("appName")}>
+        {apk && <LinkRow emoji="📲" tint={0} label={t("apkRow")} detail={t("apkDetail", { version: apk.version, code: apk.versionCode })} onPress={() => void Linking.openURL(apk.url)} />}
         <InfoRow label={t("server")} value={session.server.replace(/^https?:\/\//, "")} />
         <InfoRow label={t("device")} value={session.me.device.name ?? "—"} />
         <InfoRow label={t("notifications")} value={push === null ? "…" : push ? t("notificationsOn") : t("notificationsOff")} />
