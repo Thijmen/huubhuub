@@ -12,7 +12,8 @@ bun run test
 
 To sign in during development, create an invite (`/app` in Telegram, or the admin UI's People page) and open
 the link on the phone, or paste it on the sign-in screen. The bot's `APP_PUBLIC_URL` must be reachable from
-the phone; on a local network `http://<your-ip>:8081` works.
+the phone. In Expo Go a local address like `http://<your-ip>:8081` works; APK builds need HTTPS, because
+Android blocks plain HTTP in release builds.
 
 ## Layout
 
