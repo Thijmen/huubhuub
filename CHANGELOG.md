@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.5.0
+
+### Minor Changes
+
+- [#46](https://github.com/Thijmen/huubhuub/pull/46) [`4547196`](https://github.com/Thijmen/huubhuub/commit/45471961ccd0f5e04103a5f6a31f7c0b74b65605) Thanks [@Thijmen](https://github.com/Thijmen)! - The phone app keeps itself up to date. Over-the-air updates download in the background and start the next time the app is opened after a few minutes away. When an update needs a new APK, the app offers the download instead of silently falling behind. Each APK now stays available on the "app-android" GitHub release, which is also where the invite page's "download the app" link goes by default (`APP_DOWNLOAD_URL`).
+
 ## 0.4.0
 
 ### Minor Changes
