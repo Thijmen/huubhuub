@@ -1,4 +1,4 @@
-import { MEMORY_MODES, type Memory, type MemoryMode, type Person, type Persona, type Store } from "./store"
+import { isAppChat, MEMORY_MODES, type Memory, type MemoryMode, type Person, type Persona, type Store } from "./store"
 
 export const MEMORY_MAX_CHARS = 500
 export const MEMORY_MAX_PER_USER = 100
@@ -103,13 +103,13 @@ export class Personas {
   }
 
   /** Whether the bot started this session: a Telegram thread or a scheduled run. */
-  private ours(sessionID: string): { group: boolean } | undefined {
+  private ours(sessionID: string): { group: boolean; app: boolean } | undefined {
     const thread = this.store.bySession(sessionID)
-    if (thread) return { group: thread.chatId < 0 }
+    if (thread) return { group: thread.chatId < 0, app: isAppChat(thread.chatId) }
     const run = this.store.runBySession(sessionID)
     if (!run) return undefined
     const chatId = this.store.schedule(run.scheduleId)?.chatId ?? null
-    return { group: chatId !== null && chatId < 0 }
+    return { group: chatId !== null && chatId < 0, app: chatId !== null && isAppChat(chatId) }
   }
 
   /**
@@ -126,6 +126,7 @@ export class Personas {
       persona: this.personaFor(userId),
       person,
       group: ours.group,
+      app: ours.app,
       mode,
       memories: person && mode !== "off" ? this.store.memories(person.id) : [],
       now,
@@ -142,6 +143,7 @@ export class Personas {
       persona: this.personaFor(userId),
       person,
       group: false,
+      app: false,
       mode,
       memories: mode === "off" ? [] : this.store.memories(userId),
       now,
@@ -216,6 +218,8 @@ function buildSystem(o: {
   persona: Persona | undefined
   person: Pick<Person, "id" | "name" | "username"> | undefined
   group: boolean
+  /** The conversation lives only in the phone app. */
+  app: boolean
   mode: MemoryMode
   memories: Memory[]
   now: number
@@ -230,9 +234,11 @@ function buildSystem(o: {
   parts.push(
     [
       "# Conversation",
-      `You're talking with ${who} through Telegram${o.group ? ", in a group chat" : ""}.`,
+      o.app ? `You're talking with ${who} through the HuubHuub phone app.` : `You're talking with ${who} through Telegram${o.group ? ", in a group chat" : ""}.`,
       `Today is ${date} (${o.timeZone}). Run \`date\` when you need the exact time.`,
-      "Replies are shown in Telegram: keep them compact. Bold, italic, `code`, code blocks, links, lists and quotes render; tables don't, so use lists instead.",
+      o.app
+        ? "Replies are shown in a phone chat app: keep them compact. Markdown renders: headings, bold, italic, `code`, code blocks, links, lists, quotes and small tables."
+        : "Replies are shown in Telegram: keep them compact. Bold, italic, `code`, code blocks, links, lists and quotes render; tables don't, so use lists instead.",
     ].join("\n"),
   )
 

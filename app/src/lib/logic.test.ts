@@ -50,7 +50,7 @@ describe("chatReducer", () => {
 
   test("a message typed here shows until the server has it", () => {
     let s = chatReducer(initialChat, { type: "page", page: page() })
-    s = chatReducer(s, { type: "pending", pending: { id: "local-1", text: "En zondag?", createdAt: 5 } })
+    s = chatReducer(s, { type: "pending", pending: { id: "local-1", text: "En zondag?", images: [], createdAt: 5 } })
     expect(s.pending).toHaveLength(1)
     s = chatReducer(s, { type: "page", page: page({ messages: [...page().messages, { id: "u2", role: "user", createdAt: 6, text: "En zondag?", images: [] }] }) })
     expect(s.pending).toHaveLength(0)

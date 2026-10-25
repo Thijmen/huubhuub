@@ -6,9 +6,10 @@ RUN bun install --frozen-lockfile --production \
   && rm -rf node_modules/@opencode/cli-*-musl
 
 FROM oven/bun:1.4
-# Tools the agent commonly shells out to, plus the GitHub CLI from GitHub's own apt repo.
+# Tools the agent commonly shells out to, faad for voice notes from the phone app (AAC), plus the GitHub CLI
+# from GitHub's own apt repo.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ripgrep ca-certificates curl bash jq less openssh-client python3 \
+  && apt-get install -y --no-install-recommends git ripgrep ca-certificates curl bash jq less openssh-client python3 faad \
   && mkdir -p -m 755 /etc/apt/keyrings \
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
   && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \

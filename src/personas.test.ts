@@ -174,3 +174,16 @@ describe("Store threads", () => {
     rmSync(old, { recursive: true, force: true })
   })
 })
+
+describe("Personas in the app", () => {
+  test("app-only conversations are with the app person, and say so", () => {
+    const sanne = store.createAppPerson("Sanne")
+    store.set({ chatId: sanne.appChatId!, threadId: 1 }, "ses_app")
+    store.addMemory(sanne.id, "Houdt van Texel", "user")
+    const { system, memory } = personas.context("ses_app", NOW)
+    expect(memory).toBe(true)
+    expect(system).toContain("You're talking with Sanne through the HuubHuub phone app.")
+    expect(system).toContain("small tables")
+    expect(system).toContain("Houdt van Texel")
+  })
+})

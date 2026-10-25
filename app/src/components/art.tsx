@@ -18,7 +18,7 @@ export function HuubAvatar({ size = 32 }: { size?: number }) {
   )
 }
 
-export type IconName = "back" | "search" | "new" | "send" | "stop" | "settings" | "link" | "check"
+export type IconName = "back" | "search" | "new" | "send" | "stop" | "settings" | "link" | "check" | "camera" | "mic" | "close" | "pin" | "archive" | "more" | "chevron"
 
 /** Line icons from the design proposal, drawn in `color`. */
 export function Icon({ name, size = 24, color }: { name: IconName; size?: number; color: string }) {
@@ -51,6 +51,34 @@ export function Icon({ name, size = 24, color }: { name: IconName; size?: number
         <Path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" {...stroke} />
       )}
       {name === "check" && <Path d="M5 12.5 10 17.5 19 7" {...stroke} strokeWidth={2.5} />}
+      {name === "camera" && (
+        <>
+          <Path d="M4.5 7.5h3L9.2 5h5.6l1.7 2.5h3A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5V9a1.5 1.5 0 0 1 1.5-1.5z" {...stroke} strokeWidth={2} />
+          <Circle cx={12} cy={13.3} r={3.4} {...stroke} strokeWidth={2} />
+        </>
+      )}
+      {name === "mic" && (
+        <>
+          <Rect x={9} y={3} width={6} height={11.5} rx={3} {...stroke} />
+          <Path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" {...stroke} />
+        </>
+      )}
+      {name === "close" && <Path d="M6 6l12 12M18 6 6 18" {...stroke} strokeWidth={2.4} />}
+      {name === "pin" && <Path d="M12 16.5V22M8.5 3h7l-1 5.5 3.5 3.5v2.5H6V12l3.5-3.5z" fill={color} stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />}
+      {name === "archive" && (
+        <>
+          <Rect x={3.5} y={4} width={17} height={4.5} rx={1.2} {...stroke} />
+          <Path d="M5 8.5v10A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-10M10 12.5h4" {...stroke} />
+        </>
+      )}
+      {name === "more" && (
+        <>
+          <Circle cx={12} cy={5.5} r={1.8} fill={color} />
+          <Circle cx={12} cy={12} r={1.8} fill={color} />
+          <Circle cx={12} cy={18.5} r={1.8} fill={color} />
+        </>
+      )}
+      {name === "chevron" && <Path d="m9.5 5.5 6.5 6.5-6.5 6.5" {...stroke} />}
     </Svg>
   )
 }

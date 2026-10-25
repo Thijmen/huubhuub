@@ -9,7 +9,7 @@ import { font, radius, space, useTheme } from "@/theme"
 import { HuubAvatar } from "./art"
 import { Markdown } from "./markdown"
 
-export const UserBubble = memo(function UserBubble({ text, images = [], pending }: { text: string; images?: Extract<AppMessage, { role: "user" }>["images"]; pending?: boolean }) {
+export const UserBubble = memo(function UserBubble({ text, images = [], pending }: { text: string; images?: { uri: string | null }[]; pending?: boolean }) {
   const { c } = useTheme()
   return (
     <Animated.View entering={FadeIn.duration(180)} style={{ alignSelf: "flex-end", maxWidth: "85%", gap: space.xs, opacity: pending ? 0.6 : 1 }}>

@@ -4,6 +4,7 @@ import type { QuestionAction } from "@server/protocol"
 import { ApiError } from "./api"
 import { chatReducer, initialChat } from "./chat-state"
 import { t } from "./i18n"
+import type { Photo } from "./media"
 import { useApi } from "./session"
 
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 20_000]
@@ -82,12 +83,12 @@ export function useConversation(id: string) {
   }, [api, id, reload, reloadSoon])
 
   const send = useCallback(
-    async (text: string) => {
-      const pending = { id: `local-${Date.now()}`, text, createdAt: Date.now() }
+    async (text: string, photos: Photo[] = []) => {
+      const pending = { id: `local-${Date.now()}`, text, images: photos.map((p) => p.uri), createdAt: Date.now() }
       // An answer to an open question doesn't become a message of its own.
-      if (!state.question) dispatch({ type: "pending", pending })
+      if (!state.question || photos.length) dispatch({ type: "pending", pending })
       try {
-        await api.send(id, text)
+        await api.send(id, text, photos.map(({ data, name }) => ({ data, name })))
         setError(null)
       } catch (err) {
         dispatch({ type: "unsent", id: pending.id })
@@ -122,5 +123,9 @@ export function useConversation(id: string) {
     }
   }, [api, id, state.older])
 
-  return { state, error, send, stop, answer, loadOlder, reload }
+  const transcribe = useCallback(async (audio: string, mime: string) => (await api.transcribe(audio, mime)).text, [api])
+
+  const organised = useCallback((c: { pinned: boolean; archived: boolean }) => dispatch({ type: "organised", pinned: c.pinned, archived: c.archived }), [])
+
+  return { state, error, send, stop, answer, loadOlder, reload, transcribe, organised }
 }

@@ -1,4 +1,5 @@
-import { UserError, type Chats } from "../chats"
+import { AudioError } from "../audio"
+import { sniffImage, UserError, type AppImage, type Chats } from "../chats"
 import type { Config } from "../config"
 import type { Bridge } from "../opencode"
 import { parseAction, type QuestionAction as ServerQuestionAction, type Questions } from "../question"
@@ -7,21 +8,33 @@ import { isAppChat, type AppDevice, type ChatState, type Store } from "../store"
 import { AccessError, type AppAccess } from "./access"
 import { AppEvents, previewOf, toAppMessages } from "./events"
 import { invitePage } from "./invite-page"
+import { ConversationSearch } from "./search"
+import { AppSettings, SettingsError, type SettingsDeps } from "./settings"
 import {
   APP_API_VERSION,
   type AppEvent,
   type ConversationList,
   type ConversationPage,
+  type ConversationPatch,
   type ConversationSummary,
   type Me,
   type NewConversationRequest,
   type PairRequest,
   type PairResponse,
   type PushTokenRequest,
+  type ImageUpload,
+  type MemoryModeRequest,
+  type NewMemoryRequest,
+  type PauseRequest,
+  type PersonaRequest,
   type QuestionRequest,
+  type SearchResponse,
   type SendRequest,
+  type TranscribeRequest,
+  type TranscribeResponse,
 } from "./protocol"
 import type { AppPush } from "./push"
+import type { Transcriber } from "../transcribe"
 
 const PAGE = 60
 const LIST_LIMIT = 100
@@ -30,6 +43,9 @@ const HEARTBEAT_MS = 15_000
 const PAIR_WINDOW_MS = 15 * 60_000
 const PAIR_PER_IP = 10
 const PAIR_TOTAL = 60
+const MAX_IMAGES = 4
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024
 
 export interface AppDeps {
   config: Config
@@ -39,10 +55,12 @@ export interface AppDeps {
   questions: Questions
   access: AppAccess
   push: AppPush
-  /** Whether voice notes can be transcribed. */
-  voice: boolean
+  /** Turns voice notes into text; undefined when the server has no AWS credentials. */
+  transcriber?: Pick<Transcriber, "transcribeRecording">
   /** The Telegram bot's name, shown in the app. */
   serverName: () => string
+  /** For the settings screens: persona, memory, scheduled tasks, spending. */
+  settings: Omit<SettingsDeps, "store">
 }
 
 class HttpError extends Error {
@@ -63,6 +81,10 @@ type Handler = (req: Req, device: AppDevice, server: Bun.Server<undefined>) => P
  */
 export function startAppApi(d: AppDeps) {
   const pairs = new PairLimiter()
+  const settings = new AppSettings({ ...d.settings, store: d.store })
+  const finder = new ConversationSearch((sessionID, cursor) =>
+    d.bridge.host.message.list({ sessionID, order: "desc", limit: 200, ...(cursor ? { cursor } : {}) }),
+  )
 
   const authed = (handler: Handler) => async (req: Req, server: Bun.Server<undefined>) => {
     const device = d.access.authenticate(req.headers.get("authorization"))
@@ -81,12 +103,18 @@ export function startAppApi(d: AppDeps) {
       "/v1/pair": {
         POST: (req, server) =>
           run(req, async (): Promise<PairResponse> => {
-            if (!pairs.allow(clientIp(req, server))) throw new HttpError(429, "Too many attempts. Try again in a few minutes.")
+            const ip = clientIp(req, server)
+            if (pairs.blocked(ip)) throw new HttpError(429, "Too many attempts. Try again in a few minutes.")
             const body = await read<PairRequest>(req)
             const name = typeof body.deviceName === "string" ? body.deviceName.trim().slice(0, 60) || null : null
             const platform = body.platform === "android" || body.platform === "ios" || body.platform === "web" ? body.platform : null
-            const { token, device } = d.access.pair(String(body.code ?? "").trim(), name, platform)
-            return { token, me: me(d, device) }
+            try {
+              const { token, device } = d.access.pair(String(body.code ?? "").trim(), name, platform)
+              return { token, me: me(d, device) }
+            } catch (err) {
+              pairs.failed(ip)
+              throw err
+            }
           }),
       },
       "/v1/me": { GET: authed((_, device) => me(d, device)) },
@@ -104,20 +132,43 @@ export function startAppApi(d: AppDeps) {
       },
 
       "/v1/conversations": {
-        GET: authed(async (_, device): Promise<ConversationList> => {
-          const threads = d.store.conversationsOf(device.personId, LIST_LIMIT)
+        GET: authed(async (req, device): Promise<ConversationList> => {
+          const archived = new URL(req.url).searchParams.get("archived") === "1"
+          const threads = d.store.conversationsOf(device.personId, LIST_LIMIT, archived)
           const active = await activeSessions(d)
           return { conversations: await Promise.all(threads.map((t) => summary(d, t, active))) }
         }),
         POST: authed(async (req, device): Promise<ConversationSummary> => {
           const body = await read<NewConversationRequest>(req).catch(() => ({}) as NewConversationRequest)
-          const text = body.text === undefined ? "" : messageText(body.text)
+          const images = imageUploads(body.images)
+          const text = body.text === undefined ? "" : messageText(body.text, images.length > 0)
           const { sessionID } = await d.chats.startFromApp(device.personId)
-          if (text) await d.chats.sendFromApp(sessionID, device.personId, text)
+          if (text || images.length) await d.chats.sendFromApp(sessionID, device.personId, text, images)
           return summary(d, d.store.bySession(sessionID)!, await activeSessions(d))
         }),
       },
+      "/v1/search": {
+        GET: authed(async (req, device): Promise<SearchResponse> => {
+          const q = (new URL(req.url).searchParams.get("q") ?? "").slice(0, 200)
+          const threads = d.store.conversationsOf(device.personId, LIST_LIMIT, "all")
+          const sessions = await Promise.all(threads.map((t) => d.bridge.getSession(t.sessionID).catch(() => undefined)))
+          const byId = new Map(threads.map((t) => [t.sessionID, t]))
+          const searchable = threads
+            .map((t, i) => ({ sessionID: t.sessionID, title: sessions[i]?.title ?? null, updated: sessions[i]?.time.updated ?? t.updatedAt }))
+            .sort((a, b) => b.updated - a.updated)
+          const hits = await finder.search(q, searchable)
+          const active = await activeSessions(d)
+          return { results: await Promise.all(hits.map(async (h) => ({ conversation: await summary(d, byId.get(h.sessionID)!, active), snippet: h.snippet }))) }
+        }),
+      },
       "/v1/conversations/:id": {
+        PATCH: authed(async (req, device): Promise<ConversationSummary> => {
+          const thread = owned(d, device, req)
+          const patch = await read<ConversationPatch>(req)
+          if (typeof patch.archived === "boolean") d.store.setArchived(thread, patch.archived)
+          if (typeof patch.pinned === "boolean") d.store.setPinned(thread, patch.pinned)
+          return summary(d, d.store.bySession(thread.sessionID)!, await activeSessions(d))
+        }),
         GET: authed(async (req, device): Promise<ConversationPage> => {
           const thread = owned(d, device, req)
           const cursor = new URL(req.url).searchParams.get("cursor") ?? undefined
@@ -144,9 +195,55 @@ export function startAppApi(d: AppDeps) {
       "/v1/conversations/:id/messages": {
         POST: authed(async (req, device) => {
           const thread = owned(d, device, req)
-          const { text } = await read<SendRequest>(req)
-          await d.chats.sendFromApp(thread.sessionID, device.personId, messageText(text))
+          const body = await read<SendRequest>(req)
+          const images = imageUploads(body.images)
+          await d.chats.sendFromApp(thread.sessionID, device.personId, messageText(body.text ?? "", images.length > 0), images)
         }),
+      },
+      "/v1/transcribe": {
+        POST: authed(async (req): Promise<TranscribeResponse> => {
+          if (!d.transcriber) throw new HttpError(501, "This server can't transcribe voice notes.")
+          const body = await read<TranscribeRequest>(req)
+          const audio = decodeBase64(body.audio, MAX_AUDIO_BYTES, "recording")
+          const text = await d.transcriber.transcribeRecording(audio, String(body.mime ?? "audio/mp4")).catch((err) => {
+            if (err instanceof AudioError) throw new HttpError(400, err.message)
+            throw err
+          })
+          if (!text) throw new HttpError(422, "I couldn't make out any speech.")
+          return { text }
+        }),
+      },
+      "/v1/persona": {
+        GET: authed((_, device) => settings.persona(device.personId)),
+        PUT: authed(async (req, device) => settings.setPersona(device.personId, (await read<PersonaRequest>(req)).personaId)),
+      },
+      "/v1/memory": {
+        GET: authed((_, device) => settings.memory(device.personId)),
+        POST: authed(async (req, device) => settings.addMemory(device.personId, (await read<NewMemoryRequest>(req)).text)),
+        DELETE: authed((_, device) => settings.forgetAll(device.personId)),
+      },
+      "/v1/memory/mode": {
+        PUT: authed(async (req, device) => settings.setMemoryMode(device.personId, (await read<MemoryModeRequest>(req)).mode)),
+      },
+      "/v1/memory/:id": {
+        DELETE: authed((req, device) => settings.forget(device.personId, numberParam(req))),
+      },
+      "/v1/schedules": {
+        GET: authed((_, device) => settings.schedules(device.personId)),
+      },
+      "/v1/schedules/:id": {
+        DELETE: authed((req, device) => {
+          settings.deleteSchedule(device.personId, numberParam(req))
+        }),
+      },
+      "/v1/schedules/:id/paused": {
+        PUT: authed(async (req, device) => settings.setPaused(device.personId, numberParam(req), (await read<PauseRequest>(req)).paused)),
+      },
+      "/v1/schedules/:id/run": {
+        POST: authed((req, device) => settings.runNow(device.personId, numberParam(req))),
+      },
+      "/v1/spending": {
+        GET: authed((_, device) => settings.spending(device.personId)),
       },
       "/v1/conversations/:id/stop": {
         POST: authed(async (req, device) => {
@@ -179,7 +276,15 @@ async function run(req: Request, fn: () => Promise<unknown> | unknown): Promise<
     return result instanceof Response ? result : json(result ?? { ok: true })
   } catch (err) {
     const status =
-      err instanceof HttpError ? err.status : err instanceof SpendLimitError ? 402 : err instanceof AccessError ? 403 : err instanceof UserError ? 400 : 500
+      err instanceof HttpError || err instanceof SettingsError
+        ? err.status
+        : err instanceof SpendLimitError
+          ? 402
+          : err instanceof AccessError
+            ? 403
+            : err instanceof UserError
+              ? 400
+              : 500
     if (status === 500) console.error(`app ${req.method} ${new URL(req.url).pathname} failed`, err)
     return json({ error: status === 500 ? "Something went wrong on the server." : (err as Error).message }, status)
   }
@@ -192,8 +297,14 @@ function me(d: AppDeps, device: AppDevice): Me {
     device: { id: device.id, name: device.name },
     serverName: d.serverName(),
     apiVersion: APP_API_VERSION,
-    features: { voice: d.voice, telegram: person?.telegramId != null },
+    features: { voice: Boolean(d.transcriber), telegram: person?.telegramId != null },
   }
+}
+
+function numberParam(req: Req): number {
+  const n = Number((req.params as Record<string, string>).id)
+  if (!Number.isSafeInteger(n) || n <= 0) throw new HttpError(404, "Not found.")
+  return n
 }
 
 /** The conversation in the URL, if it's one of this person's private conversations. */
@@ -225,6 +336,8 @@ async function summary(d: AppDeps, t: ChatState, active: Set<string>, loaded?: R
     busy: active.has(t.sessionID),
     preview: previewOf(messages),
     telegram: !isAppChat(t.chatId),
+    pinned: t.pinned,
+    archived: t.archivedAt !== null,
   }
 }
 
@@ -268,10 +381,37 @@ function eventStream(d: AppDeps, sessionID: string, signal: AbortSignal): Respon
   return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" } })
 }
 
-function messageText(text: unknown): string {
-  if (typeof text !== "string" || !text.trim()) throw new HttpError(400, "Type a message first.")
+/** The text of a message; it may be empty when photos come along. */
+function messageText(text: unknown, optional = false): string {
+  if (typeof text !== "string" || !text.trim()) {
+    if (optional && (text === undefined || typeof text === "string")) return ""
+    throw new HttpError(400, "Type a message first.")
+  }
   if (text.length > MAX_TEXT) throw new HttpError(400, `Keep messages under ${MAX_TEXT} characters.`)
   return text.trim()
+}
+
+/** Photos sent along with a message, checked to be images we can pass on. */
+function imageUploads(uploads: unknown): AppImage[] {
+  if (uploads === undefined || uploads === null) return []
+  if (!Array.isArray(uploads)) throw new HttpError(400, "Expected a list of images.")
+  if (uploads.length > MAX_IMAGES) throw new HttpError(400, `Send at most ${MAX_IMAGES} photos at once.`)
+  return uploads.map((u: ImageUpload, i) => {
+    const bytes = decodeBase64(u?.data, MAX_IMAGE_BYTES, "photo")
+    const mime = sniffImage(bytes)
+    if (!mime) throw new HttpError(400, `Photo ${i + 1} isn't a JPEG, PNG, GIF or WebP image.`)
+    const name = typeof u.name === "string" && u.name.trim() ? u.name.trim().slice(0, 100) : undefined
+    return { bytes, mime, ...(name ? { name } : {}) }
+  })
+}
+
+function decodeBase64(data: unknown, max: number, what: string): Uint8Array {
+  if (typeof data !== "string" || !data) throw new HttpError(400, `The ${what} is missing.`)
+  // Base64 is 4/3 the size; refuse before decoding something huge.
+  if (data.length > Math.ceil((max * 4) / 3) + 4) throw new HttpError(413, `The ${what} is too large.`)
+  const bytes = Buffer.from(data.replace(/^data:[^,]*,/, ""), "base64")
+  if (!bytes.length) throw new HttpError(400, `The ${what} is empty.`)
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
 function questionAction(action: unknown): ServerQuestionAction {
@@ -288,14 +428,17 @@ function clientIp(req: Request, server: Bun.Server<undefined>): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || server.requestIP(req)?.address || "unknown"
 }
 
+/** Slows down guessing invite codes: too many failed attempts, from one address or in total, and pairing waits. */
 class PairLimiter {
-  private hits: { ip: string; at: number }[] = []
+  private failures: { ip: string; at: number }[] = []
 
-  allow(ip: string, now = Date.now()): boolean {
-    this.hits = this.hits.filter((h) => h.at > now - PAIR_WINDOW_MS)
-    if (this.hits.length >= PAIR_TOTAL || this.hits.filter((h) => h.ip === ip).length >= PAIR_PER_IP) return false
-    this.hits.push({ ip, at: now })
-    return true
+  blocked(ip: string, now = Date.now()): boolean {
+    this.failures = this.failures.filter((h) => h.at > now - PAIR_WINDOW_MS)
+    return this.failures.length >= PAIR_TOTAL || this.failures.filter((h) => h.ip === ip).length >= PAIR_PER_IP
+  }
+
+  failed(ip: string, now = Date.now()): void {
+    this.failures.push({ ip, at: now })
   }
 }
 

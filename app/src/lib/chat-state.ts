@@ -4,6 +4,8 @@ import type { AppEvent, AppMessage, ConversationPage, Question, ToolKind } from 
 export interface Pending {
   id: string
   text: string
+  /** Local files of photos sent along. */
+  images: string[]
   createdAt: number
 }
 
@@ -11,6 +13,8 @@ export interface ChatState {
   loaded: boolean
   title: string | null
   telegram: boolean
+  pinned: boolean
+  archived: boolean
   messages: AppMessage[]
   pending: Pending[]
   older: string | null
@@ -27,6 +31,8 @@ export const initialChat: ChatState = {
   loaded: false,
   title: null,
   telegram: false,
+  pinned: false,
+  archived: false,
   messages: [],
   pending: [],
   older: null,
@@ -43,6 +49,7 @@ export type ChatAction =
   | { type: "pending"; pending: Pending }
   | { type: "unsent"; id: string }
   | { type: "question"; question: Question | null }
+  | { type: "organised"; pinned: boolean; archived: boolean }
 
 export function chatReducer(s: ChatState, a: ChatAction): ChatState {
   switch (a.type) {
@@ -55,6 +62,8 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
         loaded: true,
         title: page.conversation.title ?? s.title,
         telegram: page.conversation.telegram,
+        pinned: page.conversation.pinned,
+        archived: page.conversation.archived,
         busy: page.conversation.busy,
         activity: page.conversation.busy ? s.activity : null,
         messages,
@@ -69,6 +78,8 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       return { ...s, pending: s.pending.filter((p) => p.id !== a.id) }
     case "question":
       return { ...s, question: openQuestion(a.question) }
+    case "organised":
+      return { ...s, pinned: a.pinned, archived: a.archived }
     case "event":
       return applyEvent(s, a.event)
   }
@@ -118,9 +129,9 @@ function openQuestion(q: Question | null): Question | null {
   return q && q.status === "pending" ? q : null
 }
 
-/** A pending message shows up in the server's page as a user message with the same text. */
+/** A pending message shows up in the server's page as a user message with the same text (or, for photos alone, with photos). */
 function delivered(p: Pending, messages: AppMessage[]): boolean {
-  return messages.some((m) => m.role === "user" && m.text.trim() === p.text.trim())
+  return messages.some((m) => m.role === "user" && (p.text.trim() ? m.text.trim() === p.text.trim() : p.images.length > 0 && m.images.length > 0 && m.createdAt >= p.createdAt - 120_000))
 }
 
 /** Merge two ordered lists of messages; `b` is newer and wins. */

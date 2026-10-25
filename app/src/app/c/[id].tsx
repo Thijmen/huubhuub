@@ -3,14 +3,16 @@ import { useMemo, useState } from "react"
 import { FlatList, Pressable, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { AppMessage } from "@server/protocol"
-import { HuubAvatar } from "@/components/art"
+import { HuubAvatar, Icon } from "@/components/art"
 import { Composer } from "@/components/composer"
 import { KeyboardView } from "@/components/keyboard-view"
 import { HuubBubble, UserBubble, WorkingLine } from "@/components/message"
 import { QuestionCard } from "@/components/question-card"
 import type { Pending } from "@/lib/chat-state"
+import { showConversationActions } from "@/lib/conversation-actions"
 import { t } from "@/lib/i18n"
-import { useApi } from "@/lib/session"
+import type { Photo } from "@/lib/media"
+import { useApi, useSession } from "@/lib/session"
 import { useConversation } from "@/lib/use-conversation"
 import { font, space, useTheme } from "@/theme"
 
@@ -23,11 +25,12 @@ export default function ChatScreen() {
 function NewChat() {
   const { c } = useTheme()
   const api = useApi()
+  const { session } = useSession()
   const insets = useSafeAreaInsets()
   const [error, setError] = useState<string | null>(null)
-  const send = async (text: string) => {
+  const send = async (text: string, photos: Photo[]) => {
     try {
-      const conv = await api.create(text)
+      const conv = await api.create(text, photos.map(({ data, name }) => ({ data, name })))
       router.replace({ pathname: "/c/[id]", params: { id: conv.id } })
     } catch (err) {
       setError((err as Error).message)
@@ -49,7 +52,13 @@ function NewChat() {
           )}
         </View>
         <View style={{ paddingBottom: insets.bottom }}>
-          <Composer busy={false} onSend={send} onStop={() => {}} autoFocus />
+          <Composer
+            busy={false}
+            onSend={send}
+            onStop={() => {}}
+            onTranscribe={session?.me.features.voice ? async (audio, mime) => (await api.transcribe(audio, mime)).text : undefined}
+            autoFocus
+          />
         </View>
       </KeyboardView>
     </>
@@ -61,7 +70,8 @@ type Item = { kind: "message"; message: AppMessage; showAvatar: boolean } | { ki
 function Chat({ id }: { id: string }) {
   const { c } = useTheme()
   const insets = useSafeAreaInsets()
-  const { state, error, send, stop, answer, loadOlder } = useConversation(id)
+  const { session, api } = useSession()
+  const { state, error, send, stop, answer, loadOlder, transcribe, organised } = useConversation(id)
 
   // Newest first, for an inverted list that starts at the bottom.
   const items = useMemo<Item[]>(() => {
@@ -80,7 +90,21 @@ function Chat({ id }: { id: string }) {
 
   return (
     <>
-      <Stack.Screen options={{ title: state.title ?? (state.loaded ? t("untitled") : "") }} />
+      <Stack.Screen
+        options={{
+          title: state.title ?? (state.loaded ? t("untitled") : ""),
+          headerRight: () =>
+            state.loaded && api ? (
+              <Pressable
+                hitSlop={10}
+                accessibilityLabel={t("archive")}
+                onPress={() => showConversationActions(api, { id, title: state.title, pinned: state.pinned, archived: state.archived }, organised)}
+              >
+                <Icon name="more" color={c.text} />
+              </Pressable>
+            ) : null,
+        }}
+      />
       <KeyboardView>
         <FlatList
           inverted
@@ -116,7 +140,7 @@ function Chat({ id }: { id: string }) {
           }
           renderItem={({ item }) =>
             item.kind === "pending" ? (
-              <UserBubble text={item.pending.text} pending />
+              <UserBubble text={item.pending.text} images={item.pending.images.map((uri) => ({ uri }))} pending />
             ) : item.message.role === "user" ? (
               <UserBubble text={item.message.text} images={item.message.images} />
             ) : (
@@ -125,7 +149,7 @@ function Chat({ id }: { id: string }) {
           }
         />
         <View style={{ paddingBottom: insets.bottom }}>
-          <Composer busy={state.busy} onSend={send} onStop={() => void stop()} />
+          <Composer busy={state.busy} onSend={send} onStop={() => void stop()} onTranscribe={session?.me.features.voice ? transcribe : undefined} />
         </View>
       </KeyboardView>
     </>

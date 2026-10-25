@@ -4,6 +4,7 @@ import {
   TranscribeStreamingClient,
   type AudioStream,
 } from "@aws-sdk/client-transcribe-streaming"
+import { decodeAac } from "./audio"
 import type { Config } from "./config"
 
 const CHUNK_BYTES = 8 * 1024
@@ -25,14 +26,25 @@ export class Transcriber {
   }
 
   /** Transcribe an OGG/Opus voice note (the format Telegram uses) to text. */
-  async transcribeOgg(audio: Uint8Array): Promise<string> {
+  transcribeOgg(audio: Uint8Array): Promise<string> {
+    return this.transcribe(audio, "ogg-opus", 48000)
+  }
+
+  /** Transcribe a recording from the phone app: OGG/Opus as is, AAC (`.m4a`) decoded to PCM first. */
+  async transcribeRecording(audio: Uint8Array, mime: string): Promise<string> {
+    if (/ogg|opus/.test(mime)) return this.transcribeOgg(audio)
+    const pcm = await decodeAac(audio)
+    return this.transcribe(pcm.data, "pcm", pcm.sampleRate)
+  }
+
+  private async transcribe(audio: Uint8Array, encoding: "ogg-opus" | "pcm", sampleRate: number): Promise<string> {
     const language = this.config.TRANSCRIBE_LANGUAGE
     const options = this.config.TRANSCRIBE_LANGUAGE_OPTIONS.split(",").map((s) => s.trim()).filter(Boolean)
 
     const response = await this.client.send(
       new StartStreamTranscriptionCommand({
-        MediaEncoding: "ogg-opus",
-        MediaSampleRateHertz: 48000,
+        MediaEncoding: encoding,
+        MediaSampleRateHertz: sampleRate,
         AudioStream: chunks(audio),
         ...(language
           ? { LanguageCode: language as LanguageCode }

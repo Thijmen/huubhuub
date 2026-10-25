@@ -3,11 +3,21 @@ import type {
   AppEvent,
   ConversationList,
   ConversationPage,
+  ConversationPatch,
   ConversationSummary,
+  ImageUpload,
   Me,
+  MemoryMode,
+  MemorySettings,
+  PersonaSettings,
+  ScheduleItem,
+  ScheduleList,
+  Spending,
   PairResponse,
   Question,
   QuestionAction,
+  SearchResponse,
+  TranscribeResponse,
 } from "@server/protocol"
 import { t } from "./i18n"
 
@@ -43,14 +53,31 @@ export class Api {
   }
 
   me = () => this.request<Me>("GET", "/v1/me")
-  conversations = () => this.request<ConversationList>("GET", "/v1/conversations")
+  conversations = (archived = false) => this.request<ConversationList>("GET", `/v1/conversations${archived ? "?archived=1" : ""}`)
+  update = (id: string, patch: ConversationPatch) => this.request<ConversationSummary>("PATCH", `/v1/conversations/${encodeURIComponent(id)}`, patch)
+  search = (q: string) => this.request<SearchResponse>("GET", `/v1/search?q=${encodeURIComponent(q)}`)
   conversation = (id: string, cursor?: string) =>
     this.request<ConversationPage>("GET", `/v1/conversations/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`)
-  create = (text?: string) => this.request<ConversationSummary>("POST", "/v1/conversations", text ? { text } : {})
-  send = (id: string, text: string) => this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/messages`, { text })
+  create = (text?: string, images: ImageUpload[] = []) =>
+    this.request<ConversationSummary>("POST", "/v1/conversations", { ...(text ? { text } : {}), ...(images.length ? { images } : {}) })
+  send = (id: string, text: string, images: ImageUpload[] = []) =>
+    this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/messages`, { text, ...(images.length ? { images } : {}) })
+  transcribe = (audio: string, mime: string) => this.request<TranscribeResponse>("POST", "/v1/transcribe", { audio, mime })
   stop = (id: string) => this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/stop`)
   answer = (id: string, formID: string, action: QuestionAction) =>
     this.request<Question | null>("POST", `/v1/conversations/${encodeURIComponent(id)}/question`, { formID, action })
+  persona = () => this.request<PersonaSettings>("GET", "/v1/persona")
+  setPersona = (personaId: number | null) => this.request<PersonaSettings>("PUT", "/v1/persona", { personaId })
+  memory = () => this.request<MemorySettings>("GET", "/v1/memory")
+  setMemoryMode = (mode: MemoryMode | null) => this.request<MemorySettings>("PUT", "/v1/memory/mode", { mode })
+  remember = (text: string) => this.request<MemorySettings>("POST", "/v1/memory", { text })
+  forget = (id: number) => this.request<MemorySettings>("DELETE", `/v1/memory/${id}`)
+  forgetAll = () => this.request<MemorySettings>("DELETE", "/v1/memory")
+  schedules = () => this.request<ScheduleList>("GET", "/v1/schedules")
+  setPaused = (id: number, paused: boolean) => this.request<ScheduleItem>("PUT", `/v1/schedules/${id}/paused`, { paused })
+  runNow = (id: number) => this.request<ScheduleItem>("POST", `/v1/schedules/${id}/run`)
+  deleteSchedule = (id: number) => this.request<void>("DELETE", `/v1/schedules/${id}`)
+  spending = () => this.request<Spending>("GET", "/v1/spending")
   setPushToken = (token: string | null) => this.request<void>("PUT", "/v1/devices/current/push", { token })
   signOut = () => this.request<void>("DELETE", "/v1/devices/current")
 
