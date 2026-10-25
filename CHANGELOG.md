@@ -1,5 +1,15 @@
 # huubhuub
 
+## 0.3.0
+
+### Minor Changes
+
+- [#37](https://github.com/Thijmen/huubhuub/pull/37) [`488dfbf`](https://github.com/Thijmen/huubhuub/commit/488dfbfcd91bb3b8d248ada1d2176d3266e9e9d9) Thanks [@Thijmen](https://github.com/Thijmen)! - Pin, archive and search conversations in the phone app. Long-press a conversation to pin it to the top or archive it; writing in an archived conversation brings it back. Search looks through titles and everything that was said.
+
+- [#37](https://github.com/Thijmen/huubhuub/pull/37) [`488dfbf`](https://github.com/Thijmen/huubhuub/commit/488dfbfcd91bb3b8d248ada1d2176d3266e9e9d9) Thanks [@Thijmen](https://github.com/Thijmen)! - Settings in the phone app: pick your persona, see and edit what Huub remembers (and when it may remember things), pause, run or delete your reminders, and see what you've spent against your limits. Failed invite attempts are now what's rate limited, so signing in several phones in a row no longer trips the limit.
+
+- [#37](https://github.com/Thijmen/huubhuub/pull/37) [`488dfbf`](https://github.com/Thijmen/huubhuub/commit/488dfbfcd91bb3b8d248ada1d2176d3266e9e9d9) Thanks [@Thijmen](https://github.com/Thijmen)! - Send voice notes and photos from the phone app. Voice notes are transcribed like Telegram ones (the image now includes `faad` to decode the app's recordings), and photos sent from the app also show up in the Telegram topic. Huub now knows when a conversation happens in the app, and formats replies for it.
+
 ## 0.2.0
 
 ### Minor Changes
