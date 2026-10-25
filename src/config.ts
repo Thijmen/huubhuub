@@ -45,6 +45,17 @@ const schema = z.object({
   ADMIN_HOST: z.string().default("0.0.0.0"),
   ADMIN_TOKEN: z.string().optional(),
   ADMIN_PUBLIC_URL: z.string().url().optional(),
+  /** The phone app's API. 0 turns it off. Expose it through a TLS proxy; unlike the admin UI it's meant to be public. */
+  APP_PORT: z.coerce.number().int().min(0).max(65535).default(8081),
+  APP_HOST: z.string().default("0.0.0.0"),
+  /** Where phones reach the app API, e.g. https://huub.example.com. Invite links point here. */
+  APP_PUBLIC_URL: z
+    .string()
+    .url()
+    .transform((u) => u.replace(/\/+$/, ""))
+    .optional(),
+  /** Where the invite page sends people who don't have the app yet. */
+  APP_DOWNLOAD_URL: z.string().url().default("https://github.com/Thijmen/huubhuub/releases/latest"),
   QUESTION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(DEFAULT_QUESTION_TIMEOUT),
   SCHEDULE_TIMEZONE: z
     .string()

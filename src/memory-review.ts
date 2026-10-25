@@ -4,7 +4,7 @@ import { parseModelRef } from "./config"
 import type { Bridge, SessionEvent } from "./opencode"
 import { displayName, MemoryError, type Personas } from "./personas"
 import { threadParams } from "./reply"
-import type { Memory, Store } from "./store"
+import { isAppChat, type Memory, type Store } from "./store"
 
 const DEBOUNCE_MS = 1500
 const MAX_MESSAGES = 12
@@ -170,7 +170,8 @@ export class MemoryReview {
       }
     }
     const key = this.d.store.bySession(sessionID)
-    if (!key) return
+    // App-only chats have no place for these notes yet; the app's memory screen shows what was saved.
+    if (!key || isAppChat(key.chatId)) return
     for (const { memory, verb } of saved) {
       await this.d.api
         .sendMessage(key.chatId, `🧠 <i>${verb}:</i> ${escape(truncate(memory.text, 400))}`, {

@@ -13,6 +13,7 @@ HuubHuub is a Telegram bot that uses an [OpenCode V2](https://opencode.ai/v2/doc
 - **GitHub**: one GitHub App, set up from the admin UI, gives the agent `gh` and `git` access to the repos you pick. See [GitHub](#github).
 - **Skills**: pull `SKILL.md` skills from (private) GitHub repos through the same GitHub App, managed in the admin UI. See [Skills](#skills).
 - **Allowlist**: only the Telegram user IDs in `ALLOWED_USER_IDS`, or those added in the admin UI, can use the bot.
+- **Phone app**: an Android app (iOS later) for people who'd rather not use Telegram. Conversations sync with Telegram for people who use both. See [Phone app](#phone-app).
 - **Admin UI**: connect providers (paste an API key, a whole `.env`, or sign in with OAuth), manage MCP servers, change the default model and agent, read and reply to conversations live, see what sessions cost over time, and open the OpenCode web UI for debugging. See [Admin UI](#admin-ui).
 
 ## Architecture
@@ -60,6 +61,9 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/spend-limits.ts` | Daily and monthly spending limits per person: warn, refuse new work, stop running work |
 | `src/cost-commands.ts` | `/costs` |
 | `src/admin/web/` | Admin frontend (React, no build step) |
+| `src/app-api/` | The phone app's API: invites and device tokens, conversations, live events, push notifications |
+| `src/app-commands.ts` | `/app` |
+| `app/` | The phone app (Expo / React Native) |
 | `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
 
 ## Setup
@@ -214,6 +218,25 @@ The admin UI's **Skills** page loads [agent skills](https://opencode.ai/docs/ski
 - If a pull fails, for example because the app was uninstalled from the repo, the skills from the last good pull stay loaded and every allowlisted user gets a DM. Another DM follows when the repo syncs again. Reinstalling the app is picked up automatically.
 - **Disconnect** forgets the app. It still exists on GitHub; delete it from its settings page if you don't need it.
 - Checkouts live in `/data/skills/repos`. Enabled skills are symlinked into `/data/skills/enabled`, which is added to OpenCode's `skills` paths. Removing a repo deletes its checkout.
+
+## Phone app
+
+The app in `app/` is a chat app for HuubHuub: a list of conversations, each a chat with Huub, with live replies, questions and push notifications. It talks to its own API on `APP_PORT` (default 8081), separate from the admin UI. The plan and the milestones are in [docs/app/PLAN.md](docs/app/PLAN.md).
+
+Setting it up:
+
+1. Expose `APP_PORT` through a TLS proxy (e.g. `https://huub.example.com`) and set `APP_PUBLIC_URL` to that address. Unlike the admin UI, this port is meant to be public: it only serves a person's own conversations, behind device tokens.
+2. Invite someone:
+   - People who use Telegram send `/app` to the bot and open the link on their phone. Their Telegram conversations show up in the app, and conversations started in the app get a Telegram topic.
+   - People who don't: on the admin UI's **People** page, press **Invite to the app**, enter a name, and let them scan the QR code or send them the link. Their conversations live only in the app.
+3. Invites work once and expire after 24 hours. Each phone gets its own sign-in; the People page lists them and can sign a phone out.
+
+How it behaves:
+
+- Messages typed in the app show up in the Telegram topic as "📱 from the app", so the Telegram side has context.
+- Push notifications go out when a reply finishes or Huub asks a question, unless the conversation is open on the phone. For conversations that also live in Telegram, only prompts sent from the app get a push (Telegram notifies about the rest).
+- Personas, memory and spending limits are per person, the same in Telegram and the app. People who start in the app get a person ID of their own; Telegram users keep their Telegram ID.
+- Scheduled tasks in app-only conversations open a new conversation in the app; notices that would be Telegram messages arrive as push notifications.
 
 ## Admin UI
 

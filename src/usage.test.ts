@@ -55,6 +55,7 @@ describe("Usage", () => {
       runBySession: (id: string) => (id === "job" ? ({ scheduleId: 1 } as ScheduleRun) : undefined),
       schedule: () => ({ name: "Digest", chatId: 9 }) as Schedule,
       people: () => [],
+      ownerOfChat: (chatId: number) => (chatId > 0 ? chatId : null),
     }
     return { usage: new Usage(bridge as never, store), sessions, messages }
   }

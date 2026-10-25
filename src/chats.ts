@@ -8,17 +8,24 @@ import type { Questions } from "./question"
 import type { SpendLimits } from "./spend-limits"
 import { threadParams } from "./reply"
 import { ChatView } from "./stream"
-import type { ChatKey, Store } from "./store"
+import { isAppChat, type ChatKey, type Store } from "./store"
 import type { Transcriber } from "./transcribe"
 
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 const NEW_TOPIC_NAME = "New conversation"
 
+/** Where a prompt came from. Telegram has its own notifications; the app gets a push for replies to prompts sent there. */
+export type PromptSource = "telegram" | "app" | "portal"
+
 /** Owns per-thread views and turns Telegram input into OpenCode prompts. */
 export class Chats {
   private views = new Map<string, ChatView>()
   private pendingAutoTitle = new Set<string>()
+  /** Told about every prompt sent to a conversation. */
+  onPrompt?: (sessionID: string, source: PromptSource) => void
+  /** Delivers a notice in an app-only chat (a push), where Telegram can't be used. */
+  appNotice?: (key: ChatKey, html: string) => Promise<void>
 
   constructor(
     private readonly api: Api,
@@ -33,10 +40,17 @@ export class Chats {
 
   /** Refuse new work from someone who has reached a spending limit. Runs before anything costs money. */
   async guard(user: User | undefined): Promise<void> {
-    if (user && this.limits) await this.limits.check(user.id)
+    if (user && this.limits) await this.limits.check(this.personOf(user))
   }
 
+  /** The person behind a Telegram user, keeping their display name current. */
+  personOf(user: User): number {
+    return this.store.seePerson(user.id, [user.first_name, user.last_name].filter(Boolean).join(" ") || null, user.username ?? null)
+  }
+
+  /** The Telegram view of a conversation. App-only chats have none. */
   async view(key: ChatKey): Promise<ChatView> {
+    if (isAppChat(key.chatId)) throw new Error(`Chat ${key.chatId} only exists in the app`)
     const sessionID = await this.bridge.sessionFor(key)
     const id = viewId(key)
     const current = this.views.get(id)
@@ -131,14 +145,13 @@ export class Chats {
     }
     const key = this.store.bySession(sessionID)
     if (!key) return void (await this.bridge.prompt(sessionID, text))
-    await this.api
-      .sendMessage(key.chatId, `💻 <i>from portal</i>\n${escape(truncate(text, 3500))}`, { parse_mode: "HTML", ...threadParams(key) })
-      .catch((err) => console.error("portal echo failed", err))
-    await this.send(key, text)
+    if (!isAppChat(key.chatId)) await this.echo(key, "💻 <i>from portal</i>", text)
+    await this.send(key, text, [], undefined, "portal")
   }
 
   /** Open a conversation from the portal: a new topic when the chat supports it, else a fresh session in place. */
   async startFromPortal(chatId: number): Promise<{ key: ChatKey; sessionID: string }> {
+    if (isAppChat(chatId)) return this.startInApp(chatId)
     const from = { chatId, threadId: 0 }
     const chat = await this.api.getChat(chatId).catch(() => undefined)
     if (chat && this.threaded(chat)) {
@@ -165,6 +178,13 @@ export class Chats {
    * chat, whose session it replaces. Returns where the run lives.
    */
   async openScheduled(chatId: number, title: string, sessionID: string, intro: string, preface?: (key: ChatKey) => Promise<void>): Promise<ChatKey> {
+    if (isAppChat(chatId)) {
+      // The run's output is in the session already; a held-back (silent) run that turns out to matter gets a notice.
+      const key = { chatId, threadId: this.store.nextAppThread(chatId) }
+      this.store.set(key, sessionID, false)
+      if (preface) await this.appNotice?.(key, intro).catch((err) => console.error("schedule notice failed", err))
+      return key
+    }
     const main = { chatId, threadId: 0 }
     const chat = await this.api.getChat(chatId).catch(() => undefined)
     let key: ChatKey = main
@@ -190,12 +210,74 @@ export class Chats {
   }
 
   /** Prompt the thread's session. `from` is the Telegram user who wrote it; the session takes on their persona and memories. */
-  async send(key: ChatKey, text: string, files: Attachment[] = [], from?: User): Promise<void> {
-    await this.guard(from)
-    const view = await this.view(key)
-    if (from) this.store.seePerson(from.id, [from.first_name, from.last_name].filter(Boolean).join(" ") || null, from.username ?? null)
-    this.store.touch(key, from?.id)
-    await this.bridge.prompt(view.sessionID, text, files)
+  async send(key: ChatKey, text: string, files: Attachment[] = [], from?: User, source: PromptSource = "telegram"): Promise<void> {
+    const personId = from ? this.personOf(from) : undefined
+    if (personId !== undefined) await this.limits?.check(personId)
+    await this.prompt(key, text, files, personId, source)
+  }
+
+  private async prompt(key: ChatKey, text: string, files: Attachment[], personId: number | undefined, source: PromptSource): Promise<void> {
+    // App-only chats have no Telegram view; their replies reach the app through the session's events.
+    const sessionID = isAppChat(key.chatId) ? await this.bridge.sessionFor(key) : (await this.view(key)).sessionID
+    this.store.touch(key, personId)
+    await this.bridge.prompt(sessionID, text, files)
+    this.onPrompt?.(sessionID, source)
+  }
+
+  /**
+   * Start a conversation from the app. People who use Telegram with topics get a new topic, so it shows up
+   * there too; everyone else gets one in their app-only chat.
+   */
+  async startFromApp(personId: number): Promise<{ key: ChatKey; sessionID: string }> {
+    const person = this.store.person(personId)
+    if (!person) throw new UserError("Unknown person.")
+    if (person.telegramId !== null) {
+      const chat = await this.api.getChat(person.telegramId).catch(() => undefined)
+      if (chat && this.threaded(chat)) {
+        const topic = await this.createTopic({ chatId: person.telegramId, threadId: 0 })
+        if (topic) {
+          await this.api
+            .sendMessage(topic.key.chatId, "📱 New conversation started in the app.", threadParams(topic.key))
+            .catch((err) => console.error("topic intro failed", err))
+          return topic
+        }
+      }
+    }
+    return this.startInApp(this.store.appChatOf(personId), person.telegramId)
+  }
+
+  /** A new conversation in an app-only chat, with the model and agent of the person's latest one. */
+  private async startInApp(chatId: number, telegramId: number | null = null): Promise<{ key: ChatKey; sessionID: string }> {
+    const key = { chatId, threadId: this.store.nextAppThread(chatId) }
+    const prev = this.store.latest(chatId) ?? (telegramId !== null ? this.store.latest(telegramId) : undefined)
+    const sessionID = await this.bridge.openThread(key, prev ?? key)
+    return { key, sessionID }
+  }
+
+  /** A message typed in the app. It answers an open question; otherwise it's a prompt, echoed into Telegram when the conversation lives there. */
+  async sendFromApp(sessionID: string, personId: number, text: string, files: Attachment[] = []): Promise<void> {
+    const flow = this.questions.pending(sessionID)
+    if (flow && text.trim()) {
+      await this.questions.act(sessionID, flow.formID, { type: "text", text })
+      return
+    }
+    const key = this.store.bySession(sessionID)
+    if (!key) throw new UserError("That conversation no longer exists.")
+    await this.limits?.check(personId)
+    if (!isAppChat(key.chatId)) await this.echo(key, "📱 <i>from the app</i>", text)
+    await this.prompt(key, text, files, personId, "app")
+  }
+
+  /** Post a notice in a chat: a Telegram message, or a push for app-only chats. */
+  async post(key: ChatKey, html: string): Promise<void> {
+    if (isAppChat(key.chatId)) return this.appNotice?.(key, html)
+    await this.api.sendMessage(key.chatId, html, { parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...threadParams(key) })
+  }
+
+  private async echo(key: ChatKey, label: string, text: string): Promise<void> {
+    await this.api
+      .sendMessage(key.chatId, `${label}\n${escape(truncate(text, 3500))}`, { parse_mode: "HTML", ...threadParams(key) })
+      .catch((err) => console.error("echo failed", err))
   }
 
   /** While the agent waits on a question in this thread, a typed message answers it. */

@@ -427,8 +427,28 @@ export interface MemoryInfo {
   updatedAt: number
 }
 
+export interface AppDeviceInfo {
+  id: string
+  personId: number
+  name: string | null
+  platform: string | null
+  pushToken: string | null
+  createdAt: number
+  seenAt: number | null
+}
+
+export interface AppInvite {
+  url: string
+  expiresAt: number
+  /** The link as an SVG QR code. */
+  qr: string
+}
+
 export interface PersonInfo {
   id: number
+  /** Null for people who only use the app. */
+  telegramId: number | null
+  appChatId: number | null
   name: string | null
   username: string | null
   personaId: number | null
@@ -442,6 +462,10 @@ export interface PersonInfo {
   spendExempt: boolean
   /** Spend against the limits that apply to them; null when it couldn't be read. */
   spend: PersonSpend | null
+  /** Phones signed in to the app. */
+  devices: AppDeviceInfo[]
+  /** App invites that can still be used. */
+  openInvites: number
 }
 
 export interface PeriodSpend {
@@ -464,6 +488,8 @@ export interface PeopleResponse {
   defaultMemoryMode: MemoryMode
   defaultLimits: { daily: number | null; monthly: number | null }
   personas: { id: number; name: string }[]
+  /** The app API is on and APP_PUBLIC_URL is set, so people can be invited. */
+  appEnabled: boolean
   people: PersonInfo[]
 }
 

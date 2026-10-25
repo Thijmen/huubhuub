@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { api, enc, type MemoryInfo, type MemoryMode, type PeopleResponse, type PeriodSpend, type PersonInfo, type ThreadRow, type ToolCallsResponse } from "../api"
+import { api, enc, type AppInvite, type MemoryInfo, type MemoryMode, type PeopleResponse, type PeriodSpend, type PersonInfo, type ThreadRow, type ToolCallsResponse } from "../api"
 import { money } from "../spend"
 import { Badge, Button, Confirm, Empty, ErrorBanner, Field, Initials, Modal, PageHeader, relTime, Segmented, Skeleton, Toggle, useAction, useApi } from "../ui"
 import { MEMORY_MODE_OPTIONS } from "./personas"
@@ -9,12 +9,22 @@ const SOURCE_LABEL: Record<MemoryInfo["source"], string> = { agent: "by the bot"
 
 export function PeoplePage() {
   const { data, error, reload } = useApi<PeopleResponse>("/api/people", 15_000)
+  const [inviting, setInviting] = useState(false)
   return (
     <>
       <PageHeader
         title="People"
-        subtitle="Everyone who has written to the bot: their persona, what it remembers about them, and what they may spend. People can change their persona and memory themselves with /persona and /memory, and see their spending with /costs."
+        subtitle="Everyone who uses the bot, in Telegram or the phone app: their persona, what it remembers about them, and what they may spend. People can change their persona and memory themselves with /persona and /memory, and see their spending with /costs."
+        actions={
+          <Button variant="primary" disabled={!data?.appEnabled} title={data && !data.appEnabled ? "Set APP_PUBLIC_URL first" : undefined} onClick={() => setInviting(true)}>
+            Invite to the app
+          </Button>
+        }
       />
+      {data && !data.appEnabled && (
+        <p className="muted small">To invite people to the phone app, expose the app API (APP_PORT, default 8081) through a TLS proxy and set APP_PUBLIC_URL to that address.</p>
+      )}
+      {inviting && <NewAppPerson onClose={() => setInviting(false)} reload={reload} />}
       <ErrorBanner error={error} onRetry={reload} />
       {!data ? (
         <Skeleton rows={3} />
@@ -37,7 +47,7 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
   const { busy, run } = useAction()
   const [draft, setDraft] = useState("")
   const [preview, setPreview] = useState<string>()
-  const name = p.name || (p.username ? `@${p.username}` : `User ${p.id}`)
+  const name = p.name || (p.username ? `@${p.username}` : `User ${p.telegramId ?? p.id}`)
   const defaultPersona = data.personas.find((x) => x.id === data.defaultPersonaId)
   const defaultMode = MEMORY_MODE_OPTIONS.find((o) => o.value === data.defaultMemoryMode)!
   const mode = p.memoryMode ?? "default"
@@ -58,8 +68,9 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
           <Initials name={name} seed={String(p.id)} />
           <strong>{name}</strong>
           {p.username && p.name && <span className="muted small">@{p.username}</span>}
-          <span className="mono muted small">{p.id}</span>
-          {!p.allowed && <Badge tone="warn">not on the allowlist</Badge>}
+          {p.telegramId !== null && <span className="mono muted small">{p.telegramId}</span>}
+          {p.telegramId === null && <Badge>app only</Badge>}
+          {p.telegramId !== null && !p.allowed && <Badge tone="warn">not on the allowlist</Badge>}
           <span className="muted small">{p.seenAt ? `last message ${relTime(p.seenAt)}` : "hasn't written yet"}</span>
         </div>
         <Button size="sm" variant="ghost" busy={busy === "prompt"} onClick={showPrompt}>
@@ -121,6 +132,8 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
         </form>
       </div>
 
+      <AppAccess person={p} enabled={data.appEnabled} reload={reload} />
+
       <Conversations userId={p.id} />
 
       {preview !== undefined && (
@@ -131,6 +144,96 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
         </Modal>
       )}
     </article>
+  )
+}
+
+/** Phones signed in to the app, and one-time invites. */
+function AppAccess({ person: p, enabled, reload }: { person: PersonInfo; enabled: boolean; reload: () => Promise<void> }) {
+  const { busy, run } = useAction()
+  const [invite, setInvite] = useState<AppInvite>()
+  const create = () => run("invite", () => api<AppInvite>("POST", `/api/people/${p.id}/app-invite`).then((i) => (setInvite(i), reload())))
+  const revoke = (id: string) => run(`revoke:${id}`, () => api("DELETE", `/api/app-devices/${enc(id)}`).then(reload), "Signed out")
+  return (
+    <div className="stack">
+      <div className="card-head memory-head">
+        <h3>
+          Phone app <span className="muted small">{p.devices.length}</span>
+        </h3>
+        <Button size="sm" variant="ghost" busy={busy === "invite"} disabled={!enabled} onClick={create}>
+          New invite
+        </Button>
+      </div>
+      {p.devices.length === 0 ? (
+        <p className="muted small">
+          No phones signed in.{p.openInvites ? ` ${p.openInvites} invite${p.openInvites === 1 ? "" : "s"} not used yet.` : ""}
+        </p>
+      ) : (
+        <div className="skill-list memory-list">
+          {p.devices.map((d) => (
+            <div key={d.id} className="skill-row">
+              <div>
+                <strong>{d.name || "Phone"}</strong> <span className="muted small">{d.platform ?? ""}</span>
+                <div className="muted small">
+                  Signed in {relTime(d.createdAt)}
+                  {d.seenAt ? `, last seen ${relTime(d.seenAt)}` : ""}
+                  {d.pushToken ? ", notifications on" : ", notifications off"}
+                </div>
+              </div>
+              <Confirm text="Sign this phone out?" onConfirm={() => revoke(d.id)}>
+                {(ask) => (
+                  <Button size="sm" variant="ghost" busy={busy === `revoke:${d.id}`} onClick={ask}>
+                    Sign out
+                  </Button>
+                )}
+              </Confirm>
+            </div>
+          ))}
+        </div>
+      )}
+      {invite && <InviteModal invite={invite} name={p.name} onClose={() => setInvite(undefined)} />}
+    </div>
+  )
+}
+
+function NewAppPerson({ onClose, reload }: { onClose: () => void; reload: () => Promise<void> }) {
+  const { busy, run } = useAction()
+  const [name, setName] = useState("")
+  const [invite, setInvite] = useState<AppInvite>()
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    void run("create", () => api<AppInvite>("POST", "/api/people/app", { name }).then((i) => (setInvite(i), reload())))
+  }
+  if (invite) return <InviteModal invite={invite} name={name} onClose={onClose} />
+  return (
+    <Modal title="Invite someone to the app" subtitle="For people who don't use Telegram. People who do can send /app to the bot instead, so their Telegram conversations come along." onClose={onClose}>
+      <form className="stack" onSubmit={submit}>
+        <Field label="Name">
+          <input className="input" autoFocus maxLength={60} placeholder="e.g. Sanne" value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <div className="row-end">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" busy={busy === "create"} disabled={!name.trim()}>
+            Create invite
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function InviteModal({ invite, name, onClose }: { invite: AppInvite; name: string | null; onClose: () => void }) {
+  const expires = new Date(invite.expiresAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })
+  return (
+    <Modal title={`App invite${name ? ` for ${name}` : ""}`} subtitle={`Scan it with the phone's camera or the app, or send the link. It works once and expires ${expires}.`} onClose={onClose}>
+      <div className="stack" style={{ alignItems: "center" }}>
+        <div style={{ width: 240, background: "#fff", borderRadius: 12, padding: 8 }} dangerouslySetInnerHTML={{ __html: invite.qr }} />
+        <input className="input mono" readOnly value={invite.url} onFocus={(e) => e.currentTarget.select()} />
+        <Button onClick={() => void navigator.clipboard.writeText(invite.url)}>Copy link</Button>
+      </div>
+    </Modal>
   )
 }
 

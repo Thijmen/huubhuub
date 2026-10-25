@@ -93,13 +93,13 @@ export class Personas {
     return this.store.person(userId)?.memoryMode ?? this.defaultMemoryMode
   }
 
-  /** The Telegram user a session talks to, if any. Private chat IDs are the user's ID; group IDs are negative. */
+  /** The person a session talks to, if any: whoever last wrote in its thread, else the private chat's owner. Groups have none. */
   userOf(sessionID: string): number | null {
     const thread = this.store.bySession(sessionID)
-    if (thread) return thread.userId ?? (thread.chatId > 0 ? thread.chatId : null)
+    if (thread) return thread.userId ?? this.store.ownerOfChat(thread.chatId)
     const run = this.store.runBySession(sessionID)
     const chatId = run ? this.store.schedule(run.scheduleId)?.chatId : null
-    return chatId && chatId > 0 ? chatId : null
+    return chatId ? this.store.ownerOfChat(chatId) : null
   }
 
   /** Whether the bot started this session: a Telegram thread or a scheduled run. */

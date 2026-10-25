@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HuubHuub app: visual identity proposal</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --page:#F4F1EC; --page-ink:#1D2233; --page-muted:#6B6672; --page-line:#E4DED5;
+    --rounded: ui-rounded,"SF Pro Rounded","Nunito","Varela Round","Quicksand","Arial Rounded MT Bold",system-ui,sans-serif;
+    --sans: system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  html{background:var(--page)}
+  body{font-family:var(--sans);color:var(--page-ink);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:1240px;margin:0 auto;padding:56px 28px 96px}
+  .sprite{position:absolute;width:0;height:0;overflow:hidden}
+  h1,h2,h3{font-family:var(--rounded);letter-spacing:-.01em}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B8460A}
+  .lede{font-size:17px;color:var(--page-muted);max-width:760px;margin-top:10px}
+  section{margin-top:72px}
+  section>h2{font-size:30px;line-height:1.15;font-weight:800}
+  section>.lede{margin-bottom:28px}
+
+  /* ---------- hero ---------- */
+  .hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+  .hero h1{font-size:44px;line-height:1.05;font-weight:800;margin-top:6px}
+  .hero-marks{display:flex}
+  .hero-marks svg{width:84px;height:84px;filter:drop-shadow(0 10px 18px rgba(60,35,10,.18))}
+  .hero-marks svg+svg{margin-left:-14px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .meta span{font-size:13px;background:#fff;border:1px solid var(--page-line);border-radius:999px;padding:4px 12px;color:var(--page-muted)}
+
+  /* ---------- direction cards ---------- */
+  .dirs{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:22px}
+  .dir{background:#fff;border-radius:28px;border:1px solid var(--page-line);overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .dir.rec{box-shadow:0 0 0 3px #E85D04,0 24px 48px -24px rgba(232,93,4,.45);border-color:transparent}
+  .dir-head{display:flex;gap:14px;align-items:flex-start;padding:22px 22px 16px}
+  .dir-letter{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;font:800 18px var(--rounded);color:#fff;flex:none}
+  .dir-head h3{font-size:24px;line-height:1.1;font-weight:800}
+  .dir-head p{font-size:14px;color:var(--page-muted);margin-top:4px;line-height:1.4}
+  .badge{position:absolute;top:18px;right:18px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#E85D04;color:#fff;border-radius:999px;padding:5px 10px}
+  .art{margin:0 16px;border-radius:22px;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
+  .art>div{padding:20px 14px 14px;display:flex;flex-direction:column;align-items:center;gap:12px}
+  .art .big{display:flex;align-items:flex-end;gap:14px}
+  .art .big svg.icon{width:104px;height:104px;filter:drop-shadow(0 8px 14px rgba(0,0,0,.18))}
+  .art .big svg.masc{width:72px;height:72px}
+  .art .small{display:flex;align-items:center;gap:12px}
+  .art .small svg.i48{width:48px;height:48px}
+  .art .small svg.m32{width:32px;height:32px}
+  .art .lbl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;opacity:.6}
+  .palette{list-style:none;padding:14px 22px 4px;display:flex;flex-direction:column;gap:7px}
+  .palette li{display:flex;gap:12px;align-items:center;min-width:0}
+  .palette li>span:last-child{flex:1;display:flex;justify-content:space-between;align-items:baseline;gap:8px;min-width:0}
+  .chip{width:30px;height:30px;border-radius:11px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);position:relative;overflow:hidden}
+  .chip i{position:absolute;right:0;bottom:0;width:50%;height:50%;border-top-left-radius:8px}
+  .palette b{font-size:13px;line-height:1.25;font-weight:600}
+  .palette code{font:12px var(--mono);color:var(--page-muted);white-space:nowrap}
+  .mini{display:grid;grid-template-columns:1fr 1fr;margin:14px 16px 0;border-radius:18px;overflow:hidden;border:1px solid var(--page-line)}
+  .mini>div{padding:12px 10px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:1.35}
+  .mini .mh{display:flex;gap:6px;align-items:flex-start}
+  .mini .mh svg{width:20px;height:20px;flex:none}
+  .mini .mh span{padding:7px 9px;border-radius:4px 14px 14px 14px}
+  .mini .mu{align-self:flex-end;padding:7px 9px;border-radius:14px 14px 4px 14px;max-width:85%}
+  .typenote{font-size:13px;color:var(--page-muted);padding:14px 22px 22px;margin-top:auto}
+  .typenote b{color:var(--page-ink)}
+  .typenote .sample{font-size:22px;font-weight:800;color:var(--page-ink);display:block;line-height:1.2;margin-bottom:4px}
+
+  /* ---------- mockup gallery ---------- */
+  .gallery{display:flex;flex-wrap:wrap;gap:40px 32px;justify-content:center}
+  figure{display:flex;flex-direction:column;align-items:center;gap:14px;width:360px}
+  figcaption{font-size:13.5px;color:var(--page-muted);text-align:center;line-height:1.45;max-width:340px}
+  figcaption b{color:var(--page-ink);display:block;font-size:14.5px;font-family:var(--rounded)}
+  .phone{width:360px;height:760px;border-radius:50px;background:#101012;padding:10px;position:relative;flex:none;
+    box-shadow:0 40px 70px -30px rgba(50,30,10,.45),0 0 0 1px rgba(0,0,0,.25),inset 0 0 0 2px #2b2b30}
+  .scr{width:340px;height:740px;border-radius:40px;overflow:hidden;position:relative;display:flex;flex-direction:column;
+    background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.4}
+  .scr::before{content:"";position:absolute;top:11px;left:50%;width:11px;height:11px;margin-left:-5.5px;border-radius:50%;background:#000;z-index:20;box-shadow:0 0 0 1.5px #1a1a1a}
+
+  .t-light{--bg:#FFF8F0;--surface:#FFFFFF;--surface2:#FBEEDF;--text:#1D2233;--muted:#6B6672;--border:#F0E3D3;--border2:#E6D5C2;
+    --primary:#E85D04;--on-primary:#FFFFFF;--primary-text:#B8460A;--primary-soft:#FFE9D8;--accent:#2D4BA0;--accent-soft:#E8EDFA;
+    --user:#FFE2CC;--user-text:#1D2233;--huub:#FFFFFF;--huub-border:#F2E6D8;--code-bg:#1D2233;--code-head:#283049;--code-text:#F5EDE4;--code-dim:#9AA3BD;
+    --icode-bg:#EAEFFB;--icode-text:#2D4BA0;--q-border:#FFCDA8;--success:#2F8F5B;
+    --tint1:#FFE6D3;--tint2:#E5EBFA;--tint3:#E2F2E6;--tint4:#FFF0C7;--tint5:#F6E3F0;
+    --shadow:0 1px 2px rgba(60,35,10,.05),0 6px 16px -6px rgba(60,35,10,.10);--fab-shadow:0 12px 24px -8px rgba(232,93,4,.6)}
+  .t-dark{--bg:#17130F;--surface:#221D18;--surface2:#2C251F;--text:#F5EDE4;--muted:#A99E92;--border:#342C25;--border2:#463C33;
+    --primary:#FF7A2E;--on-primary:#1D1007;--primary-text:#FF9A5C;--primary-soft:#3A2414;--accent:#9DB2F5;--accent-soft:#232A42;
+    --user:#5C2E12;--user-text:#FFEBDD;--huub:#221D18;--huub-border:#30281F;--code-bg:#0E0B09;--code-head:#1D1814;--code-text:#F5EDE4;--code-dim:#8F877E;
+    --icode-bg:#262C42;--icode-text:#B5C4F7;--q-border:#6A3A18;--success:#5CC98A;
+    --tint1:#3A2416;--tint2:#222A40;--tint3:#1D3024;--tint4:#3A3118;--tint5:#3A2234;
+    --shadow:0 1px 2px rgba(0,0,0,.3);--fab-shadow:0 12px 24px -8px rgba(255,122,46,.45)}
+
+  .status{height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:2px 24px 0 28px;font-size:13px;font-weight:600;color:var(--text)}
+  .status .sbi{display:flex;gap:5px;align-items:center}
+  .status svg{width:15px;height:15px}
+  .gesture{height:24px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+  .gesture::after{content:"";width:110px;height:4px;border-radius:2px;background:var(--text);opacity:.35}
+  .ib{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--text);flex:none}
+  .ib svg{width:22px;height:22px}
+  svg.s{width:20px;height:20px;flex:none}
+
+  /* pair */
+  .pair{flex:1;display:flex;flex-direction:column;align-items:center;padding:14px 24px 0;text-align:center}
+  .pair .halo{width:84px;height:84px;border-radius:30px;background:var(--primary-soft);display:grid;place-items:center;transform:rotate(-4deg)}
+  .pair .halo svg{width:62px;height:62px;transform:rotate(4deg)}
+  .pair h1{font-size:26px;line-height:32px;font-weight:800;margin-top:14px}
+  .pair p.sub{font-size:15px;line-height:22px;color:var(--muted);margin-top:6px;max-width:270px}
+  .vf{width:264px;height:264px;margin-top:20px;border-radius:30px;position:relative;overflow:hidden;
+    background:radial-gradient(120% 90% at 30% 20%,#3B4157 0%,#1C1F2B 55%,#111219 100%)}
+  .vf .qr{position:absolute;left:62px;top:56px;width:140px;height:140px;padding:10px;background:rgba(255,255,255,.92);border-radius:10px;transform:rotate(-6deg) skewX(-3deg);filter:blur(.6px);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .vf .qr svg{width:100%;height:100%;display:block}
+  .vf .c{position:absolute;width:44px;height:44px;border:4px solid var(--primary)}
+  .vf .c1{top:22px;left:22px;border-right:0;border-bottom:0;border-top-left-radius:16px}
+  .vf .c2{top:22px;right:22px;border-left:0;border-bottom:0;border-top-right-radius:16px}
+  .vf .c3{bottom:22px;left:22px;border-right:0;border-top:0;border-bottom-left-radius:16px}
+  .vf .c4{bottom:22px;right:22px;border-left:0;border-top:0;border-bottom-right-radius:16px}
+  .vf .scan{position:absolute;left:34px;right:34px;height:3px;border-radius:3px;background:var(--primary);box-shadow:0 0 18px 4px rgba(232,93,4,.55);top:50%;animation:scan 2.6s ease-in-out infinite}
+  @keyframes scan{0%,100%{top:28%}50%{top:72%}}
+  .vf .hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);white-space:nowrap;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:5px 11px;border-radius:999px;backdrop-filter:blur(6px)}
+  .vf .torch{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.14);display:grid;place-items:center;color:#fff}
+  .vf .torch svg{width:17px;height:17px}
+  .pair .help{font-size:13.5px;line-height:20px;color:var(--muted);margin-top:14px;max-width:280px}
+  .btn2{margin-top:auto;width:100%;height:52px;border-radius:18px;border:1.5px solid var(--border2);background:var(--surface);display:flex;align-items:center;justify-content:center;gap:10px;font:800 16px var(--rounded);color:var(--text)}
+  .btn2 svg{color:var(--primary-text)}
+  .safe{font-size:12px;color:var(--muted);margin:12px 0 10px;display:flex;align-items:center;gap:6px}
+
+  /* list */
+  .lhead{display:flex;align-items:center;gap:12px;padding:8px 12px 12px 18px}
+  .avring{width:44px;height:44px;border-radius:16px;background:var(--primary-soft);display:grid;place-items:center;flex:none}
+  .avring svg{width:34px;height:34px}
+  .lhead .tt{flex:1;min-width:0}
+  .lhead .tt b{display:block;font:800 22px/26px var(--rounded)}
+  .lhead .tt small{font-size:13px;color:var(--muted)}
+  .search{margin:0 16px 6px;height:46px;border-radius:16px;background:var(--surface2);display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--muted);font-size:15px}
+  .sec{padding:14px 22px 6px;font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .sec svg{width:13px;height:13px}
+  .card{background:var(--surface);margin:0 12px;border-radius:22px;border:1px solid var(--border);box-shadow:var(--shadow)}
+  .card .row+.row{border-top:1px solid var(--border)}
+  .row{display:flex;gap:12px;padding:11px 14px;align-items:center;position:relative}
+  .rows .row{padding:10px 18px}
+  .tile{width:44px;height:44px;border-radius:15px;display:grid;place-items:center;font-size:21px;flex:none}
+  .rb{flex:1;min-width:0}
+  .rt{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .rt b{font-weight:650;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rt span{font-size:12px;color:var(--muted);flex:none}
+  .rp{font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .rp.typing{color:var(--primary-text);font-weight:600;display:flex;align-items:center;gap:6px}
+  .rp.ask{color:var(--accent);font-weight:600}
+  .rt span.now{color:var(--primary-text);font-weight:700}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--primary);flex:none;margin-left:4px}
+  .dots{display:inline-flex;gap:3px}
+  .dots i{width:5px;height:5px;border-radius:50%;background:currentColor;animation:bop 1.2s infinite ease-in-out}
+  .dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+  @keyframes bop{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-3px);opacity:1}}
+  .mini-av{width:18px;height:18px;flex:none}
+  .fab{position:absolute;right:16px;bottom:38px;height:58px;padding:0 22px 0 18px;border-radius:22px;background:var(--primary);color:var(--on-primary);display:flex;align-items:center;gap:10px;font:800 16px var(--rounded);box-shadow:var(--fab-shadow)}
+  .fab svg{width:22px;height:22px}
+  .fade{position:absolute;left:0;right:0;bottom:24px;height:90px;background:linear-gradient(to bottom,transparent,var(--bg) 75%);pointer-events:none}
+
+  /* chat */
+  .bar{height:58px;flex:none;display:flex;align-items:center;gap:4px;padding:0 6px 0 4px;border-bottom:1px solid var(--border);background:var(--bg)}
+  .bar .av{width:34px;height:34px;flex:none;margin:0 6px 0 2px}
+  .bar .tt{flex:1;min-width:0}
+  .bar .tt b{display:block;font:800 17px/21px var(--rounded);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .tt small{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+  .bar .tt small.busy{color:var(--primary-text);font-weight:600}
+  .msgs{flex:1;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:10px;padding:8px 12px 10px}
+  .day{align-self:center;font-size:11.5px;font-weight:700;color:var(--muted);background:var(--surface2);padding:3px 10px;border-radius:999px;flex:none}
+  .u{align-self:flex-end;max-width:80%;background:var(--user);color:var(--user-text);padding:10px 14px;border-radius:20px 20px 6px 20px;font-size:16px;line-height:22px;flex:none}
+  .h{display:flex;gap:8px;align-items:flex-start;flex:none}
+  .h>svg.av{width:28px;height:28px;flex:none;margin-top:2px}
+  .h>.sp{width:28px;flex:none}
+  .hb{flex:1;min-width:0;background:var(--huub);border:1px solid var(--huub-border);border-radius:6px 20px 20px 20px;padding:11px 14px 12px;font-size:16px;line-height:24px;box-shadow:var(--shadow)}
+  .hb h3{font:800 17.5px/24px var(--rounded);margin-bottom:2px}
+  .hb>*+*{margin-top:8px}
+  .hb ul,.hb ol{list-style:none}
+  .hb li{position:relative;padding-left:18px}
+  .hb li+li{margin-top:3px}
+  .hb ul li::before{content:"";position:absolute;left:4px;top:10px;width:6px;height:6px;border-radius:50%;background:var(--primary)}
+  .hb ol{counter-reset:n}
+  .hb ol li{padding-left:22px;counter-increment:n}
+  .hb ol li::before{content:counter(n) ".";position:absolute;left:0;top:0;font-weight:800;color:var(--primary-text);font-family:var(--rounded)}
+  .hb code{font:13.5px var(--mono);background:var(--icode-bg);color:var(--icode-text);padding:1px 5px;border-radius:6px}
+  .hb a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1.5px}
+  .code{background:var(--code-bg);border-radius:12px;overflow:hidden}
+  .code .chd{display:flex;justify-content:space-between;align-items:center;padding:5px 8px 5px 12px;background:var(--code-head);color:var(--code-dim);font-size:11.5px;font-weight:600;letter-spacing:.03em}
+  .code .chd span.cp{display:flex;align-items:center;gap:4px}
+  .code .chd svg{width:13px;height:13px}
+  .code pre{padding:9px 12px 10px;font:12.5px/19px var(--mono);color:var(--code-text);white-space:pre;overflow:hidden}
+  .code pre .o{color:#FFB27A}.code pre .d{color:var(--code-dim)}
+  .tool{white-space:nowrap;display:inline-flex;align-items:center;gap:7px;font-size:13px;line-height:18px;color:var(--muted);background:var(--surface2);border-radius:999px;padding:5px 12px 5px 9px;align-self:flex-start;margin-left:36px;flex:none;max-width:calc(100% - 36px)}
+  .tool .q{min-width:0;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
+  .tool.live{color:var(--text);background:var(--primary-soft)}
+  .tool .ok{color:var(--success);font-weight:800}
+  .spin{width:13px;height:13px;border-radius:50%;border:2px solid var(--primary);border-right-color:transparent;animation:spin .8s linear infinite;flex:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .remind{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:14px;background:var(--accent-soft);color:var(--text);font-size:14px;line-height:19px}
+  .remind .ri{font-size:20px}
+  .remind small{display:block;color:var(--muted);font-size:12px}
+  .composer{flex:none;display:flex;align-items:flex-end;gap:8px;padding:8px 10px 6px;background:var(--bg)}
+  .cb{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--text);background:var(--surface2);flex:none}
+  .cf{flex:1;min-width:0;min-height:44px;border-radius:22px;background:var(--surface);border:1px solid var(--border2);display:flex;align-items:center;padding:0 4px 0 16px;gap:4px;font-size:15.5px;color:var(--muted)}
+  .cf .typed{color:var(--text)}
+  .cf .caret{display:inline-block;width:2px;height:19px;background:var(--primary);vertical-align:-4px;margin-left:1px;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .cf .mic{margin-left:auto;width:36px;height:36px;display:grid;place-items:center;color:var(--muted);flex:none}
+  .send{width:44px;height:44px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;flex:none}
+  .send svg{width:22px;height:22px}
+  .stop{width:44px;height:44px;border-radius:50%;background:var(--text);color:var(--bg);display:grid;place-items:center;flex:none;position:relative}
+  .stop::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2.5px solid transparent;border-top-color:var(--primary);border-right-color:var(--primary);animation:spin 1.1s linear infinite}
+  .stop svg{width:16px;height:16px}
+
+  /* question card */
+  .qcard{margin-left:36px;background:var(--surface);border:1.5px solid var(--q-border);border-radius:22px;padding:14px 14px 14px;box-shadow:var(--shadow);flex:none}
+  .ql{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--primary-text);text-transform:uppercase;letter-spacing:.08em}
+  .ql svg{width:16px;height:16px}
+  .qt{font:800 18px/24px var(--rounded);margin:6px 0 10px}
+  .opt{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:15px;background:var(--surface2);border:1px solid var(--border);font-size:15px;font-weight:600;color:var(--text)}
+  .opt+.opt{margin-top:7px}
+  .opt .e{font-size:18px;width:22px;text-align:center}
+  .opt>span:nth-child(2){flex:1;min-width:0}
+  .opt .chev{flex:none;margin-left:auto;color:var(--muted);width:16px;height:16px}
+  .opt small{display:block;font-weight:500;color:var(--muted);font-size:12.5px;line-height:16px}
+  .or{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin:12px 0 8px}
+  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--border2)}
+  .own{border:1.5px dashed var(--border2);border-radius:15px;padding:10px 8px 10px 12px;color:var(--muted);font-size:14.5px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .own svg{width:18px;height:18px;color:var(--primary-text)}
+
+
+  /* new conversation */
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;padding:34px 20px 0;text-align:center}
+  .empty .halo{width:104px;height:104px;border-radius:36px;background:var(--primary-soft);display:grid;place-items:center;transform:rotate(-5deg)}
+  .empty .halo svg{width:78px;height:78px;transform:rotate(5deg)}
+  .empty h2{font:800 23px/29px var(--rounded);margin-top:18px}
+  .empty p{font-size:14.5px;line-height:21px;color:var(--muted);margin-top:6px;max-width:260px}
+  .sugg{display:grid;grid-template-columns:1fr 1fr;gap:9px;width:100%;margin-top:auto;margin-bottom:10px;text-align:left}
+  .sugg div{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:11px 12px;font-size:14px;line-height:19px;font-weight:600;color:var(--text)}
+  .sugg div i{display:block;font-style:normal;font-size:20px;margin-bottom:5px}
+  .sugg div small{display:block;font-weight:400;color:var(--muted);font-size:12.5px;line-height:17px;margin-top:1px}
+  /* voice */
+  .vnote{align-self:flex-end;max-width:82%;background:var(--user);color:var(--user-text);padding:9px 12px 10px;border-radius:20px 20px 6px 20px;flex:none}
+  .vrow{display:flex;align-items:center;gap:8px}
+  .vplay{width:30px;height:30px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;flex:none}
+  .vplay svg{width:12px;height:12px;margin-left:2px}
+  .wave{display:flex;align-items:center;gap:2px;height:26px;flex:1}
+  .wave i{width:3px;border-radius:2px;background:currentColor;opacity:.55;flex:none}
+  .wave i.on{opacity:1}
+  .vrow small{font-size:12px;color:var(--muted);flex:none}
+  .vtr{font-size:14px;line-height:20px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-style:italic}
+  .hb ul.check li::before{content:"";top:5px;left:0;width:14px;height:14px;border-radius:5px;background:none;border:2px solid var(--border2)}
+  .hb ul.check li{padding-left:24px}
+  .hb ul.check li.new::before{border-color:var(--primary);background:var(--primary-soft)}
+  .hb ul.check li .tag{font-size:11px;font-weight:700;color:var(--primary-text);background:var(--primary-soft);border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:1px}
+  .recbar{flex:none;display:flex;align-items:center;gap:10px;padding:8px 10px 6px 14px;background:var(--bg)}
+  .recbox{flex:1;min-width:0;height:48px;border-radius:24px;background:var(--surface);border:1px solid var(--border2);display:flex;align-items:center;gap:10px;padding:0 14px}
+  .recdot{width:10px;height:10px;border-radius:50%;background:#E5484D;animation:blink 1s steps(1) infinite;flex:none}
+  .rectime{font:600 14px var(--mono);color:var(--text);flex:none}
+  .recbox .wave{color:var(--primary);height:28px;overflow:hidden}
+  .recbox .wave i{opacity:1}
+  .cancel{font-size:12.5px;color:var(--muted);text-align:center;padding:0 0 2px;flex:none;background:var(--bg)}
+  .micbig{width:56px;height:56px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;flex:none;position:relative}
+  .micbig svg{width:26px;height:26px}
+  .micbig::before{content:"";position:absolute;inset:-8px;border-radius:50%;background:var(--primary);opacity:.18;animation:pulse 1.6s ease-out infinite}
+  @keyframes pulse{0%{transform:scale(.85);opacity:.35}100%{transform:scale(1.25);opacity:0}}
+
+  /* ---------- recommendation + tokens ---------- */
+  .why{display:grid;grid-template-columns:1.1fr 1fr;gap:22px}
+  @media (max-width:900px){.why{grid-template-columns:1fr}}
+  .panel{background:#fff;border:1px solid var(--page-line);border-radius:24px;padding:24px 26px}
+  .panel h3{font-size:20px;font-weight:800;margin-bottom:10px}
+  .panel ul{padding-left:20px}
+  .panel li{margin-top:7px;font-size:15px}
+  .panel li b{font-weight:700}
+  .panel p{font-size:15px;margin-top:8px}
+  .panel .dim{color:var(--page-muted)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--page-muted);padding:6px 8px;border-bottom:1px solid var(--page-line)}
+  td{padding:7px 8px;border-bottom:1px solid #F1ECE5;vertical-align:middle}
+  td code{font:12.5px var(--mono)}
+  td .sw{display:inline-block;width:16px;height:16px;border-radius:5px;vertical-align:-3px;margin-right:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+  .tokgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:22px;margin-top:22px}
+  .radii{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+  .radii div{text-align:center;font-size:12px;color:var(--page-muted)}
+  .radii i{display:block;width:56px;height:56px;background:#FFE2CC;border:2px solid #E85D04;margin-bottom:6px}
+  .space{display:flex;flex-direction:column;gap:6px}
+  .space div{display:flex;align-items:center;gap:10px;font:12.5px var(--mono);color:var(--page-muted)}
+  .space i{display:block;height:12px;background:#2D4BA0;border-radius:3px}
+  .space span{width:110px}
+  .type div{display:flex;align-items:baseline;gap:14px;padding:6px 0;border-bottom:1px solid #F1ECE5}
+  .type code{font:11.5px var(--mono);color:var(--page-muted);width:160px;flex:none}
+  .type span{white-space:nowrap}
+  pre.tokens{background:#1D2233;color:#F5EDE4;border-radius:20px;padding:22px 24px;font:12.5px/1.6 var(--mono);overflow:auto;margin-top:22px}
+  pre.tokens .k{color:#9DB2F5}pre.tokens .s{color:#FFB27A}pre.tokens .c{color:#8C93AA}
+  .foot{margin-top:56px;font-size:13px;color:var(--page-muted);text-align:center}
+</style>
+</head>
+<body>
+
+<!-- ======================= SVG SPRITE ======================= -->
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#E2540A"/></linearGradient>
+    <linearGradient id="gB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14857B"/><stop offset="1" stop-color="#0B5A53"/></linearGradient>
+    <linearGradient id="gC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7B5BFF"/><stop offset="1" stop-color="#FF4F9A"/></linearGradient>
+
+    <!-- A: Huub mascot (speech bubble with a face + cowlick) -->
+    <symbol id="huub-a" viewBox="0 0 64 64">
+      <path d="M31 11.5c-.5-4 2.2-7 6.6-7.2" fill="none" stroke="#E85D04" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M18.5 51.5C16.5 56 13 59.5 8.5 61c6.5 1 13-.5 17.5-3.5z" fill="#E85D04"/>
+      <circle cx="33" cy="35" r="24" fill="#E85D04"/>
+      <ellipse cx="25.5" cy="33" rx="3.3" ry="4.4" fill="#1D2233"/>
+      <ellipse cx="40.5" cy="33" rx="3.3" ry="4.4" fill="#1D2233"/>
+      <circle cx="26.6" cy="31.4" r="1.1" fill="#fff"/><circle cx="41.6" cy="31.4" r="1.1" fill="#fff"/>
+      <circle cx="19.5" cy="41" r="3.4" fill="#FFB27A" opacity=".85"/><circle cx="46.5" cy="41" r="3.4" fill="#FFB27A" opacity=".85"/>
+      <path d="M27 42.5q6 5.2 12 0" fill="none" stroke="#1D2233" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <!-- A: launcher icon (HuubHuub = two bubbles) -->
+    <symbol id="icon-a" viewBox="0 0 108 108">
+      <rect width="108" height="108" rx="26" fill="url(#gA)"/>
+      <circle cx="67" cy="42" r="20" fill="#FFF8F0" opacity=".38"/>
+      <path d="M80 56c2 5 5.5 8 9.5 9-6 1.2-11.5 0-15.5-2.5z" fill="#FFF8F0" opacity=".38"/>
+      <path d="M48 31.5c-.4-4.4 2.6-7.6 7.2-7.6" fill="none" stroke="#FFF8F0" stroke-width="4" stroke-linecap="round"/>
+      <path d="M33 74c-2 5-5.5 8.6-10.5 10.2 7 1.2 14-.4 19-3.8z" fill="#FFF8F0"/>
+      <circle cx="49" cy="58" r="26" fill="#FFF8F0"/>
+      <ellipse cx="41" cy="55.5" rx="3.6" ry="4.8" fill="#1D2233"/>
+      <ellipse cx="57" cy="55.5" rx="3.6" ry="4.8" fill="#1D2233"/>
+      <circle cx="35" cy="64" r="3.4" fill="#FFC9A3"/><circle cx="63" cy="64" r="3.4" fill="#FFC9A3"/>
+      <path d="M42.5 65.5q6.5 5.6 13 0" fill="none" stroke="#1D2233" stroke-width="3.4" stroke-linecap="round"/>
+    </symbol>
+    <!-- A: Android 13 themed (monochrome) icon -->
+    <symbol id="icon-a-mono" viewBox="0 0 108 108">
+      <rect width="108" height="108" rx="54" fill="#DCE3D6"/>
+      <circle cx="67" cy="42" r="20" fill="#3E4A3A" opacity=".35"/>
+      <path d="M33 74c-2 5-5.5 8.6-10.5 10.2 7 1.2 14-.4 19-3.8z" fill="#3E4A3A"/>
+      <circle cx="49" cy="58" r="26" fill="#3E4A3A"/>
+      <ellipse cx="41" cy="55.5" rx="3.6" ry="4.8" fill="#DCE3D6"/><ellipse cx="57" cy="55.5" rx="3.6" ry="4.8" fill="#DCE3D6"/>
+      <path d="M42.5 65.5q6.5 5.6 13 0" fill="none" stroke="#DCE3D6" stroke-width="3.4" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- B: Huub as a canal-house gable -->
+    <symbol id="huub-b" viewBox="0 0 64 64">
+      <rect x="29" y="5" width="6" height="9" rx="1.5" fill="#C8553D"/>
+      <path d="M12 60V31h6v-8h6v-9h16v9h6v8h6v29z" fill="#0F6E66" stroke="#0F6E66" stroke-width="4" stroke-linejoin="round"/>
+      <rect x="18.5" y="31" width="10" height="12" rx="3.5" fill="#F5F3EE"/>
+      <rect x="35.5" y="31" width="10" height="12" rx="3.5" fill="#F5F3EE"/>
+      <circle cx="24.5" cy="38.5" r="2.6" fill="#14201E"/><circle cx="41.5" cy="38.5" r="2.6" fill="#14201E"/>
+      <path d="M26 50.5q6 4.6 12 0" fill="none" stroke="#F5F3EE" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-b" viewBox="0 0 108 108">
+      <rect width="108" height="108" rx="26" fill="url(#gB)"/>
+      <rect x="50" y="22" width="8" height="12" rx="2" fill="#E07A5F"/>
+      <path d="M31 83V50h7v-9h7v-9h18v9h7v9h7v33z" fill="#F5F3EE" stroke="#F5F3EE" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="39" y="52" width="11" height="14" rx="4" fill="#0F6E66"/><rect x="58" y="52" width="11" height="14" rx="4" fill="#0F6E66"/>
+      <circle cx="45.5" cy="60.5" r="2.8" fill="#F5F3EE"/><circle cx="64.5" cy="60.5" r="2.8" fill="#F5F3EE"/>
+      <path d="M47 73.5q7 5.2 14 0" fill="none" stroke="#0F6E66" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M24 93q7.5-4 15 0t15 0 15 0 15 0" fill="none" stroke="#7CC4BA" stroke-width="3.4" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- C: Huub with sprinkles (hagelslag) -->
+    <symbol id="huub-c" viewBox="0 0 64 64">
+      <circle cx="32" cy="36" r="25" fill="#6C47FF"/>
+      <rect x="18" y="16" width="7" height="3" rx="1.5" fill="#FFC531" transform="rotate(-30 21.5 17.5)"/>
+      <rect x="28" y="13" width="7" height="3" rx="1.5" fill="#FF4F9A" transform="rotate(12 31.5 14.5)"/>
+      <rect x="38" y="16" width="7" height="3" rx="1.5" fill="#fff" transform="rotate(48 41.5 17.5)"/>
+      <rect x="24" y="21" width="6" height="3" rx="1.5" fill="#fff" transform="rotate(70 27 22.5)"/>
+      <rect x="34" y="21" width="6" height="3" rx="1.5" fill="#FFC531" transform="rotate(-18 37 22.5)"/>
+      <circle cx="24.5" cy="36" r="6.5" fill="#fff"/><circle cx="39.5" cy="36" r="6.5" fill="#fff"/>
+      <circle cx="26.3" cy="37" r="3.3" fill="#1B1530"/><circle cx="41.3" cy="37" r="3.3" fill="#1B1530"/>
+      <path d="M27 48q5 4.5 10 0" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-c" viewBox="0 0 108 108">
+      <rect width="108" height="108" rx="26" fill="url(#gC)"/>
+      <rect x="18" y="20" width="10" height="4" rx="2" fill="#FFC531" transform="rotate(-30 23 22)"/>
+      <rect x="82" y="26" width="10" height="4" rx="2" fill="#fff" transform="rotate(40 87 28)"/>
+      <rect x="16" y="78" width="10" height="4" rx="2" fill="#fff" transform="rotate(60 21 80)"/>
+      <rect x="84" y="80" width="10" height="4" rx="2" fill="#FFC531" transform="rotate(-20 89 82)"/>
+      <rect x="70" y="14" width="9" height="4" rx="2" fill="#FFD1E5" transform="rotate(10 74 16)"/>
+      <circle cx="54" cy="57" r="29" fill="#fff"/>
+      <ellipse cx="45" cy="54" rx="4.2" ry="5.4" fill="#1B1530"/><ellipse cx="63" cy="54" rx="4.2" ry="5.4" fill="#1B1530"/>
+      <circle cx="38" cy="64" r="3.6" fill="#FFB3D4"/><circle cx="70" cy="64" r="3.6" fill="#FFB3D4"/>
+      <path d="M46 66q8 7 16 0" fill="none" stroke="#1B1530" stroke-width="3.8" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- fake QR -->
+    <symbol id="qr" viewBox="-1 -1 27 27"><path fill="#1D2233" fill-rule="evenodd" d="M0 0h7v7h-7zM1 1v5h5v-5zM2 2h3v3h-3zM18 0h7v7h-7zM19 1v5h5v-5zM20 2h3v3h-3zM0 18h7v7h-7zM1 19v5h5v-5zM2 20h3v3h-3z"/><path fill="#1D2233" d="M10 0h1v1h-1zM11 0h1v1h-1zM12 0h1v1h-1zM14 0h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM12 1h1v1h-1zM14 1h1v1h-1zM16 1h1v1h-1zM10 2h1v1h-1zM11 2h1v1h-1zM14 2h1v1h-1zM15 2h1v1h-1zM8 3h1v1h-1zM9 3h1v1h-1zM12 3h1v1h-1zM13 3h1v1h-1zM15 3h1v1h-1zM16 3h1v1h-1zM9 4h1v1h-1zM10 4h1v1h-1zM12 4h1v1h-1zM13 4h1v1h-1zM14 4h1v1h-1zM16 4h1v1h-1zM9 5h1v1h-1zM10 5h1v1h-1zM12 5h1v1h-1zM15 5h1v1h-1zM16 5h1v1h-1zM8 6h1v1h-1zM9 6h1v1h-1zM10 6h1v1h-1zM11 6h1v1h-1zM15 6h1v1h-1zM16 6h1v1h-1zM9 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM16 7h1v1h-1zM0 8h1v1h-1zM9 8h1v1h-1zM10 8h1v1h-1zM11 8h1v1h-1zM12 8h1v1h-1zM13 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM19 8h1v1h-1zM21 8h1v1h-1zM22 8h1v1h-1zM24 8h1v1h-1zM2 9h1v1h-1zM3 9h1v1h-1zM6 9h1v1h-1zM7 9h1v1h-1zM8 9h1v1h-1zM13 9h1v1h-1zM15 9h1v1h-1zM16 9h1v1h-1zM17 9h1v1h-1zM18 9h1v1h-1zM22 9h1v1h-1zM24 9h1v1h-1zM0 10h1v1h-1zM2 10h1v1h-1zM3 10h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM7 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM13 10h1v1h-1zM14 10h1v1h-1zM15 10h1v1h-1zM16 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM24 10h1v1h-1zM0 11h1v1h-1zM1 11h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM6 11h1v1h-1zM7 11h1v1h-1zM9 11h1v1h-1zM10 11h1v1h-1zM14 11h1v1h-1zM15 11h1v1h-1zM21 11h1v1h-1zM24 11h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM13 12h1v1h-1zM17 12h1v1h-1zM20 12h1v1h-1zM21 12h1v1h-1zM22 12h1v1h-1zM0 13h1v1h-1zM2 13h1v1h-1zM3 13h1v1h-1zM5 13h1v1h-1zM6 13h1v1h-1zM9 13h1v1h-1zM10 13h1v1h-1zM11 13h1v1h-1zM13 13h1v1h-1zM15 13h1v1h-1zM18 13h1v1h-1zM20 13h1v1h-1zM21 13h1v1h-1zM22 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM6 14h1v1h-1zM7 14h1v1h-1zM8 14h1v1h-1zM10 14h1v1h-1zM13 14h1v1h-1zM14 14h1v1h-1zM15 14h1v1h-1zM16 14h1v1h-1zM17 14h1v1h-1zM18 14h1v1h-1zM21 14h1v1h-1zM23 14h1v1h-1zM24 14h1v1h-1zM0 15h1v1h-1zM3 15h1v1h-1zM7 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM12 15h1v1h-1zM13 15h1v1h-1zM17 15h1v1h-1zM18 15h1v1h-1zM19 15h1v1h-1zM20 15h1v1h-1zM0 16h1v1h-1zM2 16h1v1h-1zM6 16h1v1h-1zM7 16h1v1h-1zM10 16h1v1h-1zM11 16h1v1h-1zM17 16h1v1h-1zM18 16h1v1h-1zM19 16h1v1h-1zM20 16h1v1h-1zM24 16h1v1h-1zM9 17h1v1h-1zM10 17h1v1h-1zM12 17h1v1h-1zM13 17h1v1h-1zM14 17h1v1h-1zM15 17h1v1h-1zM16 17h1v1h-1zM17 17h1v1h-1zM22 17h1v1h-1zM23 17h1v1h-1zM24 17h1v1h-1zM9 18h1v1h-1zM10 18h1v1h-1zM13 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM20 18h1v1h-1zM21 18h1v1h-1zM23 18h1v1h-1zM24 18h1v1h-1zM8 19h1v1h-1zM9 19h1v1h-1zM13 19h1v1h-1zM14 19h1v1h-1zM21 19h1v1h-1zM22 19h1v1h-1zM24 19h1v1h-1zM9 20h1v1h-1zM10 20h1v1h-1zM13 20h1v1h-1zM16 20h1v1h-1zM17 20h1v1h-1zM18 20h1v1h-1zM19 20h1v1h-1zM20 20h1v1h-1zM21 20h1v1h-1zM9 21h1v1h-1zM10 21h1v1h-1zM11 21h1v1h-1zM12 21h1v1h-1zM13 21h1v1h-1zM14 21h1v1h-1zM15 21h1v1h-1zM16 21h1v1h-1zM17 21h1v1h-1zM18 21h1v1h-1zM19 21h1v1h-1zM21 21h1v1h-1zM8 22h1v1h-1zM10 22h1v1h-1zM11 22h1v1h-1zM13 22h1v1h-1zM15 22h1v1h-1zM16 22h1v1h-1zM18 22h1v1h-1zM20 22h1v1h-1zM21 22h1v1h-1zM24 22h1v1h-1zM9 23h1v1h-1zM10 23h1v1h-1zM12 23h1v1h-1zM13 23h1v1h-1zM14 23h1v1h-1zM15 23h1v1h-1zM16 23h1v1h-1zM18 23h1v1h-1zM19 23h1v1h-1zM21 23h1v1h-1zM23 23h1v1h-1zM8 24h1v1h-1zM11 24h1v1h-1zM15 24h1v1h-1zM16 24h1v1h-1zM17 24h1v1h-1zM21 24h1v1h-1zM22 24h1v1h-1zM24 24h1v1h-1z"/></symbol>
+
+    <!-- UI icons (24px, stroke = currentColor) -->
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11.5 18.5 5 12l6.5-6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2.1"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></symbol>
+    <symbol id="i-new" viewBox="0 0 24 24"><path d="M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5h-9L5 21.5V6A1.5 1.5 0 0 1 5 4.5z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M12 8v6M9 11h6" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11.5" rx="3" fill="none" stroke="currentColor" stroke-width="2.1"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4.5 7.5h3L9.2 5h5.6l1.7 2.5h3A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5V9a1.5 1.5 0 0 1 1.5-1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13.3" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5.5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V6a1.5 1.5 0 0 1 1.5-1.5H15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 16.5V22M8.5 3h7l-1 5.5 3.5 3.5v2.5H6V12l3.5-3.5z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="18.5" r="1.8" fill="currentColor"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h3M13 17h7" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><circle cx="16" cy="7" r="2.6" fill="none" stroke="currentColor" stroke-width="2.1"/><circle cx="10" cy="17" r="2.6" fill="none" stroke="currentColor" stroke-width="2.1"/></symbol>
+    <symbol id="i-torch" viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-q" viewBox="0 0 24 24"><path d="M12 2.5l2 5.5 5.5 2-5.5 2-2 5.5-2-5.5-5.5-2 5.5-2z" fill="currentColor"/><path d="M19 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.5v17L20.5 12z" fill="currentColor"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M3 20h3v-4H3zM8.5 20h3v-8h-3zM14 20h3V8h-3zM19.5 20h3V3.5h-3z" fill="currentColor"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 20.5 1.5 8.5a15.5 15.5 0 0 1 21 0z" fill="currentColor"/></symbol>
+    <symbol id="i-bat" viewBox="0 0 24 24"><rect x="7" y="3.5" width="10" height="18" rx="2.2" fill="currentColor"/><rect x="10" y="1.5" width="4" height="2.5" rx="1" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <!-- ======================= HERO ======================= -->
+  <header class="hero">
+    <div class="hero-marks">
+      <svg viewBox="0 0 108 108"><use href="#icon-a"/></svg>
+      <svg viewBox="0 0 108 108"><use href="#icon-b"/></svg>
+      <svg viewBox="0 0 108 108"><use href="#icon-c"/></svg>
+    </div>
+    <div>
+      <div class="eyebrow">HuubHuub app · visual identity proposal</div>
+      <h1>Three looks for Huub. One recommendation.</h1>
+      <div class="meta"><span>Expo / React Native</span><span>Android first, iOS later</span><span>Light + dark</span><span>Playful &amp; branded</span><span>Oct 2026</span></div>
+    </div>
+  </header>
+  <p class="lede">HuubHuub moves out of Telegram and gets an app of its own: a friendly chat app for non-technical people, with lots of separate conversations. Below are three brand directions with palette, launcher icon and a Huub mascot, followed by full mockups of the recommended direction and the tokens to build it.</p>
+
+  <!-- ======================= DIRECTIONS ======================= -->
+  <section>
+    <h2>1 · Three brand directions</h2>
+    <p class="lede">Each direction is shown with its launcher icon (large and at 48&nbsp;px), the Huub mascot (large and at 32&nbsp;px) on light and dark, the core palette and a tiny chat sample in both modes.</p>
+
+    <div class="dirs">
+
+      <!-- A -->
+      <article class="dir rec">
+        <span class="badge">Recommended</span>
+        <header class="dir-head">
+          <span class="dir-letter" style="background:#E85D04">A</span>
+          <div><h3 class="rounded">Zondag</h3><p>A lazy Sunday morning: warm, sunny, a bit cheeky. Dutch orange with a Delft-blue wink, never kitsch.</p></div>
+        </header>
+        <div class="art">
+          <div style="background:#FFF8F0;color:#1D2233">
+            <div class="big"><svg class="icon" viewBox="0 0 108 108"><use href="#icon-a"/></svg></div>
+            <div class="small"><svg class="i48" viewBox="0 0 108 108"><use href="#icon-a"/></svg><svg class="i48" viewBox="0 0 108 108"><use href="#icon-a-mono"/></svg></div>
+            <span class="lbl">icon · 48 px · themed</span>
+          </div>
+          <div style="background:#17130F;color:#F5EDE4">
+            <div class="big"><svg class="masc" viewBox="0 0 64 64"><use href="#huub-a"/></svg></div>
+            <div class="small"><svg class="m32" viewBox="0 0 64 64"><use href="#huub-a"/></svg><span style="display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#FFF8F0"><svg class="m32" viewBox="0 0 64 64"><use href="#huub-a"/></svg></span></div>
+            <span class="lbl">Huub · 32 px</span>
+          </div>
+        </div>
+        <ul class="palette">
+          <li><span class="chip" style="background:#E85D04"></span><span><b>Primary · Mandarijn</b><code>#E85D04</code></span></li>
+          <li><span class="chip" style="background:#2D4BA0"></span><span><b>Accent · Delfts blauw</b><code>#2D4BA0</code></span></li>
+          <li><span class="chip" style="background:#FFF8F0"></span><span><b>Background light · Room</b><code>#FFF8F0</code></span></li>
+          <li><span class="chip" style="background:#17130F"></span><span><b>Background dark · Nachtkoffie</b><code>#17130F</code></span></li>
+          <li><span class="chip" style="background:#FFFFFF"><i style="background:#221D18"></i></span><span><b>Surface · Huub bubble</b><code>#FFFFFF / #221D18</code></span></li>
+          <li><span class="chip" style="background:#FFE2CC"><i style="background:#5C2E12"></i></span><span><b>User bubble · Perzik</b><code>#FFE2CC / #5C2E12</code></span></li>
+          <li><span class="chip" style="background:#1D2233"><i style="background:#F5EDE4"></i></span><span><b>Text · Inkt</b><code>#1D2233 / #F5EDE4</code></span></li>
+        </ul>
+        <div class="mini">
+          <div style="background:#FFF8F0;color:#1D2233">
+            <div class="mh"><svg viewBox="0 0 64 64"><use href="#huub-a"/></svg><span style="background:#fff;border:1px solid #F2E6D8">Zal ik havermelk op de lijst zetten?</span></div>
+            <div class="mu" style="background:#FFE2CC">Ja graag! 🥛</div>
+          </div>
+          <div style="background:#17130F;color:#F5EDE4">
+            <div class="mh"><svg viewBox="0 0 64 64"><use href="#huub-a"/></svg><span style="background:#221D18;border:1px solid #30281F">Zal ik havermelk op de lijst zetten?</span></div>
+            <div class="mu" style="background:#5C2E12;color:#FFEBDD">Ja graag! 🥛</div>
+          </div>
+        </div>
+        <p class="typenote"><span class="sample rounded" style="font-family:var(--rounded)">Hoi, ik ben Huub.</span><b>Type:</b> rounded display (Nunito ExtraBold) for titles and buttons, the system font for long replies. <b>Mascot:</b> a speech bubble with a face and a cowlick. The icon doubles it: <em>Huub</em>Huub.</p>
+      </article>
+
+      <!-- B -->
+      <article class="dir">
+        <header class="dir-head">
+          <span class="dir-letter" style="background:#0F6E66">B</span>
+          <div><h3 style="font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif">Gracht</h3><p>A canal-house evening: calm, grounded, grown-up. Deep canal green with a brick-red accent.</p></div>
+        </header>
+        <div class="art">
+          <div style="background:#F5F3EE;color:#14201E">
+            <div class="big"><svg class="icon" viewBox="0 0 108 108"><use href="#icon-b"/></svg></div>
+            <div class="small"><svg class="i48" viewBox="0 0 108 108"><use href="#icon-b"/></svg></div>
+            <span class="lbl">icon · 48 px</span>
+          </div>
+          <div style="background:#0D1514;color:#E6EEEC">
+            <div class="big"><span style="display:grid;place-items:center;width:84px;height:84px;border-radius:26px;background:#E6EEEC"><svg class="masc" viewBox="0 0 64 64"><use href="#huub-b"/></svg></span></div>
+            <div class="small"><svg class="m32" viewBox="0 0 64 64"><use href="#huub-b"/></svg><span style="display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#F5F3EE"><svg class="m32" viewBox="0 0 64 64"><use href="#huub-b"/></svg></span></div>
+            <span class="lbl">Huub · 32 px</span>
+          </div>
+        </div>
+        <ul class="palette">
+          <li><span class="chip" style="background:#0F6E66"></span><span><b>Primary · Grachtgroen</b><code>#0F6E66</code></span></li>
+          <li><span class="chip" style="background:#C8553D"></span><span><b>Accent · Baksteen</b><code>#C8553D</code></span></li>
+          <li><span class="chip" style="background:#F5F3EE"></span><span><b>Background light · Kalk</b><code>#F5F3EE</code></span></li>
+          <li><span class="chip" style="background:#0D1514"></span><span><b>Background dark · Grachtnacht</b><code>#0D1514</code></span></li>
+          <li><span class="chip" style="background:#E7EEEB"><i style="background:#1A2725"></i></span><span><b>Surface · Huub bubble</b><code>#E7EEEB / #1A2725</code></span></li>
+          <li><span class="chip" style="background:#0F6E66"><i style="background:#13534D"></i></span><span><b>User bubble</b><code>#0F6E66 / #13534D</code></span></li>
+          <li><span class="chip" style="background:#14201E"><i style="background:#E6EEEC"></i></span><span><b>Text · Turf</b><code>#14201E / #E6EEEC</code></span></li>
+        </ul>
+        <div class="mini">
+          <div style="background:#F5F3EE;color:#14201E">
+            <div class="mh"><svg viewBox="0 0 64 64"><use href="#huub-b"/></svg><span style="background:#E7EEEB">Zal ik havermelk op de lijst zetten?</span></div>
+            <div class="mu" style="background:#0F6E66;color:#fff">Ja graag! 🥛</div>
+          </div>
+          <div style="background:#0D1514;color:#E6EEEC">
+            <div class="mh"><svg viewBox="0 0 64 64"><use href="#huub-b"/></svg><span style="background:#1A2725">Zal ik havermelk op de lijst zetten?</span></div>
+            <div class="mu" style="background:#13534D;color:#fff">Ja graag! 🥛</div>
+          </div>
+        </div>
+        <p class="typenote"><span class="sample" style="font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif">Hoi, ik ben Huub.</span><b>Type:</b> soft serif titles (Fraunces) with a neutral sans body. <b>Mascot:</b> a step-gable canal house whose windows are eyes. Charming, but it reads more "trusted utility" than "friend".</p>
+      </article>
+
+      <!-- C -->
+      <article class="dir">
+        <header class="dir-head">
+          <span class="dir-letter" style="background:#6C47FF">C</span>
+          <div><h3 style="font-family:var(--sans);font-weight:900;letter-spacing:-.03em">Hagelslag</h3><p>Chocolate sprinkles on white bread: loud, poppy and cheeky. Grape purple, bubblegum pink, sprinkle yellow.</p></div>
+        </header>
+        <div class="art">
+          <div style="background:#FBFAFF;color:#1B1530">
+            <div class="big"><svg class="icon" viewBox="0 0 108 108"><use href="#icon-c"/></svg></div>
+            <div class="small"><svg class="i48" viewBox="0 0 108 108"><use href="#icon-c"/></svg></div>
+            <span class="lbl">icon · 48 px</span>
+          </div>
+          <div style="background:#110E1F;color:#EEEAFB">
+            <div class="big"><svg class="masc" viewBox="0 0 64 64"><use href="#huub-c"/></svg></div>
+            <div class="small"><svg class="m32" viewBox="0 0 64 64"><use href="#huub-c"/></svg><span style="display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#FBFAFF"><svg class="m32" viewBox="0 0 64 64"><use href="#huub-c"/></svg></span></div>
+            <span class="lbl">Huub · 32 px</span>
+          </div>
+        </div>
+        <ul class="palette">
+          <li><span class="chip" style="background:#6C47FF"></span><span><b>Primary · Druif</b><code>#6C47FF</code></span></li>
+          <li><span class="chip" style="background:#FF4F9A"><i style="background:#FFC531"></i></span><span><b>Accent · Kauwgom / Hagel</b><code>#FF4F9A / #FFC531</code></span></li>
+          <li><span class="chip" style="background:#FBFAFF"></span><span><b>Background light · Melk</b><code>#FBFAFF</code></span></li>
+          <li><span class="chip" style="background:#110E1F"></span><span><b>Background dark · Drop</b><code>#110E1F</code></span></li>
+          <li><span class="chip" style="background:#F0ECFF"><i style="background:#1E1936"></i></span><span><b>Surface · Huub bubble</b><code>#F0ECFF / #1E1936</code></span></li>
+          <li><span class="chip" style="background:#6C47FF"><i style="background:#5B3BEA"></i></span><span><b>User bubble</b><code>#6C47FF / #5B3BEA</code></span></li>
+          <li><span class="chip" style="background:#1B1530"><i style="background:#EEEAFB"></i></span><span><b>Text · Pure</b><code>#1B1530 / #EEEAFB</code></span></li>
+        </ul>
+        <div class="mini">
+          <div style="background:#FBFAFF;color:#1B1530">
+            <div class="mh"><svg viewBox="0 0 64 64"><use href="#huub-c"/></svg><span style="background:#F0ECFF">Zal ik havermelk op de lijst zetten?</span></div>
+            <div class="mu" style="background:#6C47FF;color:#fff">Ja graag! 🥛</div>
+          </div>
+          <div style="background:#110E1F;color:#EEEAFB">
+            <div class="mh"><svg viewBox="0 0 64 64"><use href="#huub-c"/></svg><span style="background:#1E1936">Zal ik havermelk op de lijst zetten?</span></div>
+            <div class="mu" style="background:#5B3BEA;color:#fff">Ja graag! 🥛</div>
+          </div>
+        </div>
+        <p class="typenote"><span class="sample" style="font-family:var(--sans);font-weight:900;letter-spacing:-.03em">Hoi, ik ben Huub.</span><b>Type:</b> heavy grotesk (Inter Black) with tight tracking. <b>Mascot:</b> a round purple head with googly eyes and sprinkle hair. Fun, but purple is the default "AI app" colour and the sprinkles get noisy when small.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ======================= MOCKUPS ======================= -->
+  <section>
+    <div class="eyebrow">Direction A · Zondag</div>
+    <h2>2 · The app in Zondag</h2>
+    <p class="lede">Frames are 360 × 760 at 1 css px = 1 dp, so the sizes match what the React Native build will use. Dutch UI and sample content, as she'll see it.</p>
+
+    <div class="gallery">
+
+      <!-- ===== Pair ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-light">
+          <div class="status"><span>9:41</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="pair">
+            <div class="halo"><svg viewBox="0 0 64 64"><use href="#huub-a"/></svg></div>
+            <h1 class="rounded" style="font-family:var(--rounded)">Hoi, ik ben Huub!</h1>
+            <p class="sub">Scan de QR-code van je HuubHuub-server om deze telefoon te koppelen.</p>
+            <div class="vf">
+              <div class="qr"><svg viewBox="-1 -1 27 27"><use href="#qr"/></svg></div>
+              <i class="c c1"></i><i class="c c2"></i><i class="c c3"></i><i class="c c4"></i>
+              <div class="scan"></div>
+              <span class="torch"><svg><use href="#i-torch"/></svg></span>
+              <span class="hint">Richt je camera op de code</span>
+            </div>
+            <p class="help">De code staat op de koppelpagina van je server. Vraag het anders even aan wie Huub voor je heeft opgezet.</p>
+            <div class="btn2"><svg class="s"><use href="#i-link"/></svg>Liever een link plakken</div>
+            <div class="safe"><svg class="s" style="width:14px;height:14px"><use href="#i-lock"/></svg>Je gesprekken blijven op je eigen server.</div>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>Pair</b>First run. The camera viewfinder has orange corner brackets and a scan line; "paste a link instead" is a full-width secondary button, not a tiny text link.</figcaption>
+      </figure>
+
+      <!-- ===== List light ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-light">
+          <div class="status"><span>9:41</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="lhead">
+            <span class="avring"><svg viewBox="0 0 64 64"><use href="#huub-a"/></svg></span>
+            <div class="tt"><b>HuubHuub</b><small>Waar gaan we het over hebben?</small></div>
+            <span class="ib"><svg><use href="#i-sliders"/></svg></span>
+          </div>
+          <div class="search"><svg class="s"><use href="#i-search"/></svg>Zoek in gesprekken</div>
+          <div class="sec"><svg><use href="#i-pin"/></svg>Vastgezet</div>
+          <div class="card">
+            <div class="row"><span class="tile" style="background:var(--tint1)">🌊</span><div class="rb"><div class="rt"><b>Weekendje Texel</b><span class="now">nu</span></div><div class="rp typing"><svg class="mini-av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>Huub is aan het typen<span class="dots"><i></i><i></i><i></i></span></div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint3)">🛒</span><div class="rb"><div class="rt"><b>Boodschappenlijst</b><span>09:12</span></div><div class="rp">Huub: Havermelk en citroenen staan erop ✓</div></div></div>
+          </div>
+          <div class="sec">Recent</div>
+          <div class="rows">
+            <div class="row"><span class="tile" style="background:var(--tint4)">🥗</span><div class="rb"><div class="rt"><b>Eten met spinazie &amp; feta</b><span>11:40</span></div><div class="rp ask">Huub wacht op je antwoord</div></div><span class="dot"></span></div>
+            <div class="row"><span class="tile" style="background:var(--tint2)">🦷</span><div class="rb"><div class="rt"><b>Herinnering tandarts</b><span>gisteren</span></div><div class="rp">Huub: Ik seintje je donderdag om 08:00</div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint5)">🎁</span><div class="rb"><div class="rt"><b>Cadeau voor mama</b><span>vr</span></div><div class="rp">Jij: Iets onder de €50 graag, ze houdt van tuinieren</div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint3)">🪴</span><div class="rb"><div class="rt"><b>Monstera redden</b><span>12 okt</span></div><div class="rp">Huub: Gele bladeren? Dan krijgt ie waarschijnlijk te veel water</div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint1)">✍️</span><div class="rb"><div class="rt"><b>Sollicitatiebrief nakijken</b><span>3 okt</span></div><div class="rp">Huub: De tweede alinea is sterk, alleen…</div></div></div>
+          </div>
+          <div class="fade"></div>
+          <div class="fab"><svg><use href="#i-new"/></svg>Nieuw gesprek</div>
+          <div style="flex:1"></div>
+          <div class="gesture" style="position:relative;z-index:2"></div>
+        </div></div>
+        <figcaption><b>Conversations, light</b>Huub picks an emoji along with each auto-generated title, so threads are easy to spot. Pinned threads sit in a card, the live row shows "Huub is aan het typen…" and a thread waiting on her answer gets a dot.</figcaption>
+      </figure>
+
+      <!-- ===== List dark ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-dark">
+          <div class="status"><span>22:14</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="lhead">
+            <span class="avring"><svg viewBox="0 0 64 64"><use href="#huub-a"/></svg></span>
+            <div class="tt"><b>HuubHuub</b><small>Nog iets regelen voor morgen?</small></div>
+            <span class="ib"><svg><use href="#i-sliders"/></svg></span>
+          </div>
+          <div class="search"><svg class="s"><use href="#i-search"/></svg>Zoek in gesprekken</div>
+          <div class="sec"><svg><use href="#i-pin"/></svg>Vastgezet</div>
+          <div class="card">
+            <div class="row"><span class="tile" style="background:var(--tint1)">🌊</span><div class="rb"><div class="rt"><b>Weekendje Texel</b><span class="now">nu</span></div><div class="rp typing"><svg class="mini-av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>Huub is aan het typen<span class="dots"><i></i><i></i><i></i></span></div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint3)">🛒</span><div class="rb"><div class="rt"><b>Boodschappenlijst</b><span>09:12</span></div><div class="rp">Huub: Havermelk en citroenen staan erop ✓</div></div></div>
+          </div>
+          <div class="sec">Recent</div>
+          <div class="rows">
+            <div class="row"><span class="tile" style="background:var(--tint4)">🥗</span><div class="rb"><div class="rt"><b>Eten met spinazie &amp; feta</b><span>11:40</span></div><div class="rp ask">Huub wacht op je antwoord</div></div><span class="dot"></span></div>
+            <div class="row"><span class="tile" style="background:var(--tint2)">🦷</span><div class="rb"><div class="rt"><b>Herinnering tandarts</b><span>gisteren</span></div><div class="rp">Huub: Ik seintje je donderdag om 08:00</div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint5)">🎁</span><div class="rb"><div class="rt"><b>Cadeau voor mama</b><span>vr</span></div><div class="rp">Jij: Iets onder de €50 graag, ze houdt van tuinieren</div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint3)">🪴</span><div class="rb"><div class="rt"><b>Monstera redden</b><span>12 okt</span></div><div class="rp">Huub: Gele bladeren? Dan krijgt ie waarschijnlijk te veel water</div></div></div>
+            <div class="row"><span class="tile" style="background:var(--tint1)">✍️</span><div class="rb"><div class="rt"><b>Sollicitatiebrief nakijken</b><span>3 okt</span></div><div class="rp">Huub: De tweede alinea is sterk, alleen…</div></div></div>
+          </div>
+          <div class="fade"></div>
+          <div class="fab"><svg><use href="#i-new"/></svg>Nieuw gesprek</div>
+          <div style="flex:1"></div>
+          <div class="gesture" style="position:relative;z-index:2"></div>
+        </div></div>
+        <figcaption><b>Conversations, dark</b>Dark mode is warm espresso, not cold grey. The orange gets lighter (<code>#FF7A2E</code>) and labels on it switch to dark ink, so contrast holds.</figcaption>
+      </figure>
+
+      <!-- ===== New conversation (dark) ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-dark">
+          <div class="status"><span>20:37</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="bar">
+            <span class="ib"><svg><use href="#i-back"/></svg></span>
+            <div class="tt" style="padding-left:4px"><b>Nieuw gesprek</b><small>Huub bedenkt straks zelf een titel</small></div>
+            <span class="ib"><svg><use href="#i-more"/></svg></span>
+          </div>
+          <div class="empty">
+            <div class="halo"><svg viewBox="0 0 64 64"><use href="#huub-a"/></svg></div>
+            <h2>Waar kan ik mee helpen?</h2>
+            <p>Vraag maar raak. Ik kan dingen opzoeken, onthouden en je ergens aan herinneren.</p>
+            <div class="sugg">
+              <div><i>🍝</i>Wat eten we vanavond?<small>Met wat er nog in huis is</small></div>
+              <div><i>⏰</i>Herinner me ergens aan<small>"Morgen om 9 uur…"</small></div>
+              <div><i>🚲</i>Plan een dagje uit<small>Route, tijden, tips</small></div>
+              <div><i>✉️</i>Help me met een berichtje<small>Netjes of juist luchtig</small></div>
+            </div>
+          </div>
+          <div class="composer">
+            <span class="cb"><svg class="s"><use href="#i-cam"/></svg></span>
+            <div class="cf"><span>Stuur een bericht…</span><span class="mic"><svg class="s"><use href="#i-mic"/></svg></span></div>
+            <span class="send" style="opacity:.4"><svg><use href="#i-send"/></svg></span>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>New conversation, dark</b>A friendly empty state instead of a blank screen. Starter cards remind her what Huub can do, and the title fills in by itself after the first message.</figcaption>
+      </figure>
+
+      <!-- ===== Chat light (working) ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-light">
+          <div class="status"><span>9:41</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="bar">
+            <span class="ib"><svg><use href="#i-back"/></svg></span>
+            <svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+            <div class="tt"><b>🌊 Weekendje Texel</b><small class="busy"><span class="spin" style="width:10px;height:10px;border-width:1.8px"></span>Huub zoekt op het web…</small></div>
+            <span class="ib"><svg><use href="#i-more"/></svg></span>
+          </div>
+          <div class="msgs">
+            <div class="u">Kun je een weekendje Texel voor ons plannen? Vrijdag na het werk heen, zondag rond de middag terug 🚲</div>
+            <div class="h"><svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+              <div class="hb">
+                <h3>Weekendje Texel</h3>
+                <p>Goed plan, Texel is in oktober lekker rustig. Zo zou ik het doen:</p>
+                <ul>
+                  <li><b>Vrijdag:</b> boot van 19:30 uit Den Helder, frietje bij de haven</li>
+                  <li><b>Zaterdag:</b> fietsen naar de vuurtoren bij De Cocksdorp</li>
+                  <li><b>Zondag:</b> uitwaaien op het strand, boot van 13:30 terug</li>
+                </ul>
+                <p>Boek de boot vooraf via <code>teso.nl</code>, dat scheelt wachten.</p>
+                <div class="code"><div class="chd"><span>RESERVERING</span><span class="cp"><svg><use href="#i-copy"/></svg>Kopieer</span></div><pre>Den Helder → Texel  <span class="o">vr 19:30</span>
+Texel → Den Helder  <span class="o">zo 13:30</span>
+<span class="d">2 personen · 1 auto</span></pre></div>
+              </div>
+            </div>
+            <div class="u">Top! Is er dit weekend nog iets leuks te doen daar?</div>
+            <div class="tool"><span class="ok">✓</span>📅 Agenda bekeken</div>
+            <div class="tool live"><span class="spin"></span>🔎 Zoekt op het web… <span class="q">"Texel dit weekend"</span></div>
+          </div>
+          <div class="composer">
+            <span class="cb"><svg class="s"><use href="#i-cam"/></svg></span>
+            <div class="cf"><span>Stuur een bericht…</span><span class="mic"><svg class="s"><use href="#i-mic"/></svg></span></div>
+            <span class="stop" title="Stop"><svg><use href="#i-stop"/></svg></span>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>Chat, light, Huub at work</b>The markdown reply has a heading, a list, inline code and a code block. Tool activity shows as small pills under the message, and while Huub works the send button turns into a stop button with a spinning orange ring.</figcaption>
+      </figure>
+
+      <!-- ===== Chat dark (idle, typed) ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-dark">
+          <div class="status"><span>22:14</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="bar">
+            <span class="ib"><svg><use href="#i-back"/></svg></span>
+            <svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+            <div class="tt"><b>🌊 Weekendje Texel</b><small>Huub · net online</small></div>
+            <span class="ib"><svg><use href="#i-more"/></svg></span>
+          </div>
+          <div class="msgs">
+            <div class="h"><span class="sp"></span>
+              <div class="hb">
+                <div class="code"><div class="chd"><span>RESERVERING</span><span class="cp"><svg><use href="#i-copy"/></svg>Kopieer</span></div><pre>Den Helder → Texel  <span class="o">vr 19:30</span>
+Texel → Den Helder  <span class="o">zo 13:30</span>
+<span class="d">2 personen · 1 auto</span></pre></div>
+              </div>
+            </div>
+            <div class="u">Top! Is er dit weekend nog iets leuks te doen daar?</div>
+            <div class="tool"><span class="ok">✓</span>🔎 Zocht op het web · 3 bronnen<svg class="s" style="width:14px;height:14px"><use href="#i-chevd"/></svg></div>
+            <div class="h"><svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+              <div class="hb">
+                <p>Zeker! Dit viel me op:</p>
+                <ol>
+                  <li><b>Zaterdag</b> streekmarkt in Den Burg, 10 tot 16 uur</li>
+                  <li><b>Zaterdagavond</b> sterrenkijken bij de <a>Sterrenwacht</a>, wel reserveren</li>
+                  <li><b>Zondag</b> zeehonden voeren bij Ecomare om 11:00</li>
+                </ol>
+                <p>Zal ik je eraan herinneren om de sterrenwacht te boeken?</p>
+              </div>
+            </div>
+            <div class="u">Ja graag, morgen om 9 uur</div>
+            <div class="h"><svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+              <div class="hb">
+                <p>Komt goed 👍</p>
+                <div class="remind"><span class="ri">⏰</span><span><b>Sterrenwacht Texel reserveren</b><small>Herinnering · ma 26 okt, 09:00</small></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="composer">
+            <span class="cb"><svg class="s"><use href="#i-cam"/></svg></span>
+            <div class="cf"><span class="typed">Wat nemen we mee?<span class="caret"></span></span><span class="mic"><svg class="s"><use href="#i-mic"/></svg></span></div>
+            <span class="send"><svg><use href="#i-send"/></svg></span>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>Chat, dark, idle</b>The same thread a bit later. Finished tool work folds into one tappable pill ("3 bronnen"), reminders render as a small card, and the composer shows camera, mic and an active send button.</figcaption>
+      </figure>
+
+      <!-- ===== Question card light ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-light">
+          <div class="status"><span>11:41</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="bar">
+            <span class="ib"><svg><use href="#i-back"/></svg></span>
+            <svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+            <div class="tt"><b>🥗 Eten met spinazie &amp; feta</b><small style="color:var(--accent);font-weight:600">Huub heeft een vraag</small></div>
+            <span class="ib"><svg><use href="#i-more"/></svg></span>
+          </div>
+          <div class="msgs">
+            <div class="day">Vandaag</div>
+            <div class="u">Wat zullen we vanavond eten? We hebben nog spinazie, feta en een paar eieren.</div>
+            <div class="h"><svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+              <div class="hb"><p>Daar kun je prima wat mee! Eén vraagje voordat ik een recept kies:</p></div>
+            </div>
+            <div class="qcard">
+              <div class="ql"><svg><use href="#i-q"/></svg>Huub vraagt</div>
+              <div class="qt">Hoeveel tijd hebben jullie vanavond?</div>
+              <div class="opt"><span class="e">⚡</span><span>Snel, max 15 minuten<small>Bijv. omelet met spinazie</small></span><svg class="chev"><use href="#i-chev"/></svg></div>
+              <div class="opt"><span class="e">🍳</span><span>Een half uurtje is prima<small>Bijv. shakshuka met feta</small></span><svg class="chev"><use href="#i-chev"/></svg></div>
+              <div class="opt"><span class="e">🫕</span><span>We hebben de tijd<small>Bijv. spanakopita uit de oven</small></span><svg class="chev"><use href="#i-chev"/></svg></div>
+              <div class="or">of</div>
+              <div class="own"><span>Typ je eigen antwoord…</span><svg><use href="#i-send"/></svg></div>
+            </div>
+          </div>
+          <div class="composer">
+            <span class="cb"><svg class="s"><use href="#i-cam"/></svg></span>
+            <div class="cf"><span>Stuur een bericht…</span><span class="mic"><svg class="s"><use href="#i-mic"/></svg></span></div>
+            <span class="send" style="opacity:.4"><svg><use href="#i-send"/></svg></span>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>Agent question, light</b>When Huub needs input, the question appears as a card with an orange outline. Options are big tap targets with an example underneath, and "Typ je eigen antwoord" is always there as a way out.</figcaption>
+      </figure>
+
+      <!-- ===== Question card dark ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-dark">
+          <div class="status"><span>18:02</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="bar">
+            <span class="ib"><svg><use href="#i-back"/></svg></span>
+            <svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+            <div class="tt"><b>🎁 Cadeau voor mama</b><small style="color:var(--accent);font-weight:600">Huub heeft een vraag</small></div>
+            <span class="ib"><svg><use href="#i-more"/></svg></span>
+          </div>
+          <div class="msgs">
+            <div class="u">Iets onder de €50 graag, ze houdt van tuinieren</div>
+            <div class="tool"><span class="ok">✓</span>🔎 Zocht op het web · 5 bronnen<svg class="s" style="width:14px;height:14px"><use href="#i-chevd"/></svg></div>
+            <div class="h"><svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+              <div class="hb"><p>Ik heb een paar leuke dingen gevonden, van een <b>Japans snoeischaartje</b> tot een <b>bollenpakket voor het voorjaar</b>. Voordat ik ga vergelijken:</p></div>
+            </div>
+            <div class="qcard">
+              <div class="ql"><svg><use href="#i-q"/></svg>Huub vraagt</div>
+              <div class="qt">Moet het cadeau op tijd binnen zijn?</div>
+              <div class="opt"><span class="e">📦</span><span>Ja, voor zaterdag</span><svg class="chev"><use href="#i-chev"/></svg></div>
+              <div class="opt"><span class="e">🗓️</span><span>Nee, haar verjaardag is pas in december</span><svg class="chev"><use href="#i-chev"/></svg></div>
+              <div class="or">of</div>
+              <div class="own"><span>Typ je eigen antwoord…</span><svg><use href="#i-send"/></svg></div>
+            </div>
+          </div>
+          <div class="composer">
+            <span class="cb"><svg class="s"><use href="#i-cam"/></svg></span>
+            <div class="cf"><span>Stuur een bericht…</span><span class="mic"><svg class="s"><use href="#i-mic"/></svg></span></div>
+            <span class="send" style="opacity:.4"><svg><use href="#i-send"/></svg></span>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>Agent question, dark</b>A two-option variant. The card outline drops to a deep amber so it still stands out without glowing.</figcaption>
+      </figure>
+      <!-- ===== Voice note (light) ===== -->
+      <figure>
+        <div class="phone"><div class="scr t-light">
+          <div class="status"><span>17:26</span><span class="sbi"><svg><use href="#i-signal"/></svg><svg><use href="#i-wifi"/></svg><svg><use href="#i-bat"/></svg></span></div>
+          <div class="bar">
+            <span class="ib"><svg><use href="#i-back"/></svg></span>
+            <svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+            <div class="tt"><b>🛒 Boodschappenlijst</b><small>Huub · luistert mee</small></div>
+            <span class="ib"><svg><use href="#i-more"/></svg></span>
+          </div>
+          <div class="msgs">
+            <div class="day">Vandaag</div>
+            <div class="vnote">
+              <div class="vrow"><span class="vplay"><svg><use href="#i-play"/></svg></span><span class="wave"><i class="on" style="height:8px"></i><i class="on" style="height:14px"></i><i class="on" style="height:20px"></i><i class="on" style="height:12px"></i><i class="on" style="height:22px"></i><i class="on" style="height:16px"></i><i class="on" style="height:9px"></i><i class="on" style="height:18px"></i><i class="on" style="height:24px"></i><i class="on" style="height:14px"></i><i class="on" style="height:10px"></i><i class="on" style="height:20px"></i><i class="on" style="height:15px"></i><i class="on" style="height:8px"></i><i class="on" style="height:12px"></i><i class="on" style="height:18px"></i><i class="on" style="height:22px"></i><i class="on" style="height:13px"></i><i class="on" style="height:9px"></i><i class="on" style="height:16px"></i><i class="on" style="height:11px"></i><i class="on" style="height:7px"></i><i class="on" style="height:14px"></i><i class="on" style="height:20px"></i><i class="on" style="height:10px"></i><i class="on" style="height:17px"></i><i style="height:23px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:15px"></i><i style="height:19px"></i><i style="height:11px"></i><i style="height:6px"></i></span><small>0:07</small></div>
+              <div class="vtr">"Zet er ook nog eieren en koriander op, en we hebben geen havermelk meer."</div>
+            </div>
+            <div class="h"><svg class="av" viewBox="0 0 64 64"><use href="#huub-a"/></svg>
+              <div class="hb">
+                <p>Staat erop! Dit is je lijst nu:</p>
+                <ul class="check">
+                  <li>Citroenen</li>
+                  <li>Volkoren pasta</li>
+                  <li class="new">Eieren<span class="tag">nieuw</span></li>
+                  <li class="new">Koriander<span class="tag">nieuw</span></li>
+                  <li class="new">Havermelk<span class="tag">nieuw</span></li>
+                </ul>
+                <p>Bij de AH hier om de hoek liggen de eieren achterin, naast de zuivel 😉</p>
+              </div>
+            </div>
+            <div class="u">Oh en wc-papier!</div>
+          </div>
+          <div class="recbar">
+            <div class="recbox"><span class="recdot"></span><span class="rectime">0:04</span><span class="wave"><i style="height:10px"></i><i style="height:18px"></i><i style="height:26px"></i><i style="height:14px"></i><i style="height:8px"></i><i style="height:20px"></i><i style="height:24px"></i><i style="height:12px"></i><i style="height:16px"></i><i style="height:28px"></i><i style="height:18px"></i><i style="height:10px"></i><i style="height:22px"></i><i style="height:14px"></i><i style="height:26px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:18px"></i><i style="height:24px"></i><i style="height:16px"></i><i style="height:10px"></i><i style="height:20px"></i><i style="height:14px"></i><i style="height:22px"></i><i style="height:8px"></i><i style="height:16px"></i><i style="height:26px"></i><i style="height:12px"></i><i style="height:18px"></i><i style="height:10px"></i><i style="height:6px"></i><i style="height:4px"></i><i style="height:4px"></i><i style="height:4px"></i></span></div>
+            <span class="micbig"><svg><use href="#i-mic"/></svg></span>
+          </div>
+          <div class="cancel">‹ Schuif naar links om te annuleren</div>
+          <div class="gesture"></div>
+        </div></div>
+        <figcaption><b>Voice note, light</b>Hold the mic to record. A live orange waveform, a timer and "slide to cancel" make it feel familiar. Sent voice notes show their transcript right in the bubble.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ======================= WHY + TOKENS ======================= -->
+  <section>
+    <h2>3 · Why Zondag, and the tokens</h2>
+    <div class="why" style="margin-top:22px">
+      <div class="panel">
+        <h3>Why this one</h3>
+        <ul>
+          <li><b>It sounds like Huub.</b> Warm, down-to-earth and a little cheeky, the same tone as the persona. Orange plus Delft blue says "Dutch" without flags, tulips or windmills.</li>
+          <li><b>Orange as seasoning, not sauce.</b> Large areas stay cream, white and ink, so long markdown replies read calmly. Orange marks only Huub and actions (FAB, send, list dots, the scan frame).</li>
+          <li><b>The mark does a lot of jobs.</b> A speech bubble with a face works as the avatar, typing indicator, empty state, notification icon and Android 13 themed icon. The two-bubble launcher icon literally spells out <em>Huub</em>Huub.</li>
+          <li><b>It stands out from other AI apps.</b> Most of them are blue, green or purple. Orange is easy to find among her other apps.</li>
+          <li><b>Dark mode stays cosy.</b> Warm espresso tones instead of blue-grey, which is easier on the eyes in bed at night.</li>
+        </ul>
+        <p class="dim"><b>Why not B (Gracht):</b> lovely and calm, but it reads like a bank or utility, and serif titles are less playful. <b>Why not C (Hagelslag):</b> purple is the default AI colour, sprinkles turn to noise at 32&nbsp;px, and it's louder than "not a clown".</p>
+      </div>
+      <div class="panel">
+        <h3>Colour tokens</h3>
+        <table>
+          <tr><th>Token</th><th>Light</th><th>Dark</th></tr>
+          <tr><td><code>bg</code></td><td><span class="sw" style="background:#FFF8F0"></span><code>#FFF8F0</code></td><td><span class="sw" style="background:#17130F"></span><code>#17130F</code></td></tr>
+          <tr><td><code>surface</code> · Huub bubble</td><td><span class="sw" style="background:#FFFFFF"></span><code>#FFFFFF</code></td><td><span class="sw" style="background:#221D18"></span><code>#221D18</code></td></tr>
+          <tr><td><code>surfaceAlt</code></td><td><span class="sw" style="background:#FBEEDF"></span><code>#FBEEDF</code></td><td><span class="sw" style="background:#2C251F"></span><code>#2C251F</code></td></tr>
+          <tr><td><code>text</code></td><td><span class="sw" style="background:#1D2233"></span><code>#1D2233</code></td><td><span class="sw" style="background:#F5EDE4"></span><code>#F5EDE4</code></td></tr>
+          <tr><td><code>textMuted</code></td><td><span class="sw" style="background:#6B6672"></span><code>#6B6672</code></td><td><span class="sw" style="background:#A99E92"></span><code>#A99E92</code></td></tr>
+          <tr><td><code>border</code></td><td><span class="sw" style="background:#F0E3D3"></span><code>#F0E3D3</code></td><td><span class="sw" style="background:#342C25"></span><code>#342C25</code></td></tr>
+          <tr><td><code>primary</code></td><td><span class="sw" style="background:#E85D04"></span><code>#E85D04</code></td><td><span class="sw" style="background:#FF7A2E"></span><code>#FF7A2E</code></td></tr>
+          <tr><td><code>onPrimary</code></td><td><span class="sw" style="background:#FFFFFF"></span><code>#FFFFFF</code></td><td><span class="sw" style="background:#1D1007"></span><code>#1D1007</code></td></tr>
+          <tr><td><code>primaryText</code> (orange text)</td><td><span class="sw" style="background:#B8460A"></span><code>#B8460A</code></td><td><span class="sw" style="background:#FF9A5C"></span><code>#FF9A5C</code></td></tr>
+          <tr><td><code>primarySoft</code></td><td><span class="sw" style="background:#FFE9D8"></span><code>#FFE9D8</code></td><td><span class="sw" style="background:#3A2414"></span><code>#3A2414</code></td></tr>
+          <tr><td><code>accent</code> (links, questions)</td><td><span class="sw" style="background:#2D4BA0"></span><code>#2D4BA0</code></td><td><span class="sw" style="background:#9DB2F5"></span><code>#9DB2F5</code></td></tr>
+          <tr><td><code>userBubble</code> / text</td><td><span class="sw" style="background:#FFE2CC"></span><code>#FFE2CC</code> / <code>#1D2233</code></td><td><span class="sw" style="background:#5C2E12"></span><code>#5C2E12</code> / <code>#FFEBDD</code></td></tr>
+          <tr><td><code>codeBg</code></td><td><span class="sw" style="background:#1D2233"></span><code>#1D2233</code></td><td><span class="sw" style="background:#0E0B09"></span><code>#0E0B09</code></td></tr>
+          <tr><td><code>inlineCode</code> bg / text</td><td><span class="sw" style="background:#EAEFFB"></span><code>#EAEFFB</code> / <code>#2D4BA0</code></td><td><span class="sw" style="background:#262C42"></span><code>#262C42</code> / <code>#B5C4F7</code></td></tr>
+        </table>
+        <p class="dim" style="font-size:13px">Contrast: white on <code>#E85D04</code> is about 3.5:1, so use it only for icons and bold labels of 16&nbsp;px or more. Body-size orange text uses <code>primaryText</code> (about 5:1 on cream). Body text <code>#1D2233</code> on <code>#FFF8F0</code> is about 15:1.</p>
+      </div>
+    </div>
+
+    <div class="tokgrid">
+      <div class="panel">
+        <h3>Radii</h3>
+        <div class="radii">
+          <div><i style="border-radius:6px"></i>xs · 6</div>
+          <div><i style="border-radius:10px"></i>sm · 10</div>
+          <div><i style="border-radius:14px"></i>md · 14</div>
+          <div><i style="border-radius:20px"></i>lg · 20</div>
+          <div><i style="border-radius:28px"></i>xl · 28</div>
+          <div><i style="border-radius:999px"></i>pill</div>
+          <div><i style="border-radius:20px 20px 6px 20px"></i>bubble 20/6</div>
+        </div>
+        <p class="dim" style="font-size:13px;margin-top:12px">Inputs and options use md (14–16), cards and bubbles lg (20–22), the FAB 22, the launcher icon 26/108. Bubbles have one 6&nbsp;px "tail" corner on the speaker's side.</p>
+      </div>
+      <div class="panel">
+        <h3>Spacing (4-pt grid)</h3>
+        <div class="space">
+          <div><span>xxs · 2</span><i style="width:2px"></i></div>
+          <div><span>xs · 4</span><i style="width:4px"></i></div>
+          <div><span>sm · 8</span><i style="width:8px"></i></div>
+          <div><span>md · 12</span><i style="width:12px"></i></div>
+          <div><span>lg · 16</span><i style="width:16px"></i></div>
+          <div><span>xl · 20</span><i style="width:20px"></i></div>
+          <div><span>xxl · 24</span><i style="width:24px"></i></div>
+          <div><span>xxxl · 32</span><i style="width:32px"></i></div>
+          <div><span>huge · 48</span><i style="width:48px"></i></div>
+        </div>
+        <p class="dim" style="font-size:13px;margin-top:12px">Screen gutter 16, gap between messages 10, bubble padding 11×14, touch targets at least 44.</p>
+      </div>
+      <div class="panel">
+        <h3>Type scale</h3>
+        <div class="type">
+          <div><code>display 28/34 · 800 R</code><span style="font:800 28px/34px var(--rounded)">Hoi!</span></div>
+          <div><code>title 22/26 · 800 R</code><span style="font:800 22px/26px var(--rounded)">HuubHuub</span></div>
+          <div><code>heading 17.5/24 · 800 R</code><span style="font:800 17.5px/24px var(--rounded)">Texel</span></div>
+          <div><code>body 16/24 · 400</code><span style="font-size:16px;line-height:24px">Boek de boot.</span></div>
+          <div><code>label 15/20 · 600</code><span style="font-size:15px;font-weight:600">Een half uurtje</span></div>
+          <div><code>small 14/19 · 400</code><span style="font-size:14px;color:var(--page-muted)">Huub: staat erop ✓</span></div>
+          <div><code>caption 12/16 · 600</code><span style="font-size:12px;font-weight:600;color:var(--page-muted)">gisteren</span></div>
+          <div><code>code 13.5/19 · mono</code><span style="font:13.5px/19px var(--mono)">teso.nl</span></div>
+        </div>
+        <p class="dim" style="font-size:13px;margin-top:10px">R = rounded family (Nunito via <code>@expo-google-fonts/nunito</code>). Body text uses the system font (Roboto / SF Pro) for long replies. Respect the OS font scale.</p>
+      </div>
+    </div>
+
+<pre class="tokens"><span class="c">// theme.ts · HuubHuub "Zondag"</span>
+<span class="k">export const</span> light = {
+  bg: <span class="s">'#FFF8F0'</span>, surface: <span class="s">'#FFFFFF'</span>, surfaceAlt: <span class="s">'#FBEEDF'</span>,
+  text: <span class="s">'#1D2233'</span>, textMuted: <span class="s">'#6B6672'</span>, border: <span class="s">'#F0E3D3'</span>, borderStrong: <span class="s">'#E6D5C2'</span>,
+  primary: <span class="s">'#E85D04'</span>, onPrimary: <span class="s">'#FFFFFF'</span>, primaryText: <span class="s">'#B8460A'</span>, primarySoft: <span class="s">'#FFE9D8'</span>,
+  accent: <span class="s">'#2D4BA0'</span>, accentSoft: <span class="s">'#E8EDFA'</span>,
+  userBubble: <span class="s">'#FFE2CC'</span>, userBubbleText: <span class="s">'#1D2233'</span>, huubBubble: <span class="s">'#FFFFFF'</span>, huubBubbleBorder: <span class="s">'#F2E6D8'</span>,
+  codeBg: <span class="s">'#1D2233'</span>, codeHeader: <span class="s">'#283049'</span>, codeText: <span class="s">'#F5EDE4'</span>, inlineCodeBg: <span class="s">'#EAEFFB'</span>, inlineCodeText: <span class="s">'#2D4BA0'</span>,
+  questionBorder: <span class="s">'#FFCDA8'</span>, success: <span class="s">'#2F8F5B'</span>, danger: <span class="s">'#C93A2B'</span>,
+} <span class="k">as const</span>;
+
+<span class="k">export const</span> dark: <span class="k">typeof</span> light = {
+  bg: <span class="s">'#17130F'</span>, surface: <span class="s">'#221D18'</span>, surfaceAlt: <span class="s">'#2C251F'</span>,
+  text: <span class="s">'#F5EDE4'</span>, textMuted: <span class="s">'#A99E92'</span>, border: <span class="s">'#342C25'</span>, borderStrong: <span class="s">'#463C33'</span>,
+  primary: <span class="s">'#FF7A2E'</span>, onPrimary: <span class="s">'#1D1007'</span>, primaryText: <span class="s">'#FF9A5C'</span>, primarySoft: <span class="s">'#3A2414'</span>,
+  accent: <span class="s">'#9DB2F5'</span>, accentSoft: <span class="s">'#232A42'</span>,
+  userBubble: <span class="s">'#5C2E12'</span>, userBubbleText: <span class="s">'#FFEBDD'</span>, huubBubble: <span class="s">'#221D18'</span>, huubBubbleBorder: <span class="s">'#30281F'</span>,
+  codeBg: <span class="s">'#0E0B09'</span>, codeHeader: <span class="s">'#1D1814'</span>, codeText: <span class="s">'#F5EDE4'</span>, inlineCodeBg: <span class="s">'#262C42'</span>, inlineCodeText: <span class="s">'#B5C4F7'</span>,
+  questionBorder: <span class="s">'#6A3A18'</span>, success: <span class="s">'#5CC98A'</span>, danger: <span class="s">'#FF6B5E'</span>,
+};
+
+<span class="k">export const</span> brand = { mandarijn: <span class="s">'#E85D04'</span>, delftsBlauw: <span class="s">'#2D4BA0'</span>, room: <span class="s">'#FFF8F0'</span>, inkt: <span class="s">'#1D2233'</span>, nachtkoffie: <span class="s">'#17130F'</span>, perzik: <span class="s">'#FFE2CC'</span> } <span class="k">as const</span>;
+
+<span class="k">export const</span> radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28, pill: 999, bubble: 20, bubbleTail: 6, fab: 22 } <span class="k">as const</span>;
+<span class="k">export const</span> space  = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, huge: 48 } <span class="k">as const</span>;
+
+<span class="k">export const</span> font = {
+  family: { rounded: <span class="s">'Nunito_800ExtraBold'</span>, roundedSemi: <span class="s">'Nunito_700Bold'</span>, body: <span class="k">undefined</span> <span class="c">/* system */</span>, mono: <span class="s">'monospace'</span> },
+  size:       { caption: 12, small: 14, label: 15, body: 16, heading: 17.5, title: 22, display: 28, code: 13.5 },
+  lineHeight: { caption: 16, small: 19, label: 20, body: 24, heading: 24, title: 26, display: 34, code: 19 },
+} <span class="k">as const</span>;</pre>
+  </section>
+
+  <p class="foot">HuubHuub · design proposal · all artwork is inline SVG, no external assets</p>
+</div>
+</body>
+</html>

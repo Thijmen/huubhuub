@@ -142,7 +142,8 @@ export class SpendLimits {
     const limits = this.limits(owner.userId)
     if (limits.daily === null && limits.monthly === null) return
     const spend = await this.spend(owner.userId)
-    const where = this.d.store.bySession(owner.root) ?? { chatId: owner.userId, threadId: 0 }
+    const person = this.d.store.person(owner.userId)
+    const where = this.d.store.bySession(owner.root) ?? { chatId: person?.telegramId ?? person?.appChatId ?? owner.userId, threadId: 0 }
     const hit = over(spend)
     if (hit) return this.stop(owner.root, sessionID, where, hit)
     for (const p of [spend.day, spend.month]) {

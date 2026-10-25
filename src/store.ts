@@ -2,7 +2,18 @@ import { Database } from "bun:sqlite"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 
-/** A conversation surface: a Telegram chat, optionally narrowed to one forum topic (thread). */
+/**
+ * Person and chat IDs from here up belong to the app. Telegram user IDs fit in 52 bits, so the ranges never
+ * collide, and these are still safe JavaScript integers.
+ */
+export const APP_ID_BASE = 2 ** 52
+
+/** A chat that only exists in the app: nothing about it may be sent to Telegram. */
+export function isAppChat(chatId: number): boolean {
+  return chatId >= APP_ID_BASE
+}
+
+/** A conversation surface: a Telegram chat (or an app-only chat), optionally narrowed to one forum topic (thread). */
 export interface ChatKey {
   chatId: number
   /** 0 when the chat has no topics or the message is outside a topic. */
@@ -55,8 +66,12 @@ export type MemoryMode = "off" | "explicit" | "auto"
 export const MEMORY_MODES: readonly MemoryMode[] = ["off", "explicit", "auto"]
 
 export interface Person {
-  /** Telegram user ID. */
+  /** The person ID: their Telegram user ID for people who started on Telegram, `APP_ID_BASE` and up for people who started in the app. */
   id: number
+  /** Their Telegram user ID, when they use Telegram. */
+  telegramId: number | null
+  /** The chat their app-only conversations live in, once they have one. */
+  appChatId: number | null
   name: string | null
   username: string | null
   /** `null` uses the default persona. */
@@ -79,6 +94,18 @@ export interface Memory {
   source: "agent" | "user" | "admin"
   createdAt: number
   updatedAt: number
+}
+
+/** A phone signed in to the app. */
+export interface AppDevice {
+  id: string
+  personId: number
+  name: string | null
+  platform: string | null
+  /** Expo push token, once the app has registered one. */
+  pushToken: string | null
+  createdAt: number
+  seenAt: number | null
 }
 
 export type ScheduleKind = "cron" | "interval" | "once"
@@ -233,6 +260,31 @@ export class Store {
     if (!peopleColumns.includes("spend_daily")) this.db.run("ALTER TABLE people ADD COLUMN spend_daily REAL")
     if (!peopleColumns.includes("spend_monthly")) this.db.run("ALTER TABLE people ADD COLUMN spend_monthly REAL")
     if (!peopleColumns.includes("spend_exempt")) this.db.run("ALTER TABLE people ADD COLUMN spend_exempt INTEGER NOT NULL DEFAULT 0")
+    if (!peopleColumns.includes("telegram_id")) {
+      // Until the app existed, every person was a Telegram user whose person ID is their Telegram ID.
+      this.db.run("ALTER TABLE people ADD COLUMN telegram_id INTEGER")
+      this.db.query("UPDATE people SET telegram_id = user_id WHERE user_id < ?").run(APP_ID_BASE)
+    }
+    if (!peopleColumns.includes("app_chat_id")) this.db.run("ALTER TABLE people ADD COLUMN app_chat_id INTEGER")
+    this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS people_by_telegram ON people (telegram_id) WHERE telegram_id IS NOT NULL")
+    this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS people_by_app_chat ON people (app_chat_id) WHERE app_chat_id IS NOT NULL")
+    this.db.run(`CREATE TABLE IF NOT EXISTS app_devices (
+      id TEXT PRIMARY KEY,
+      person_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      name TEXT,
+      platform TEXT,
+      push_token TEXT,
+      created_at INTEGER NOT NULL,
+      seen_at INTEGER
+    )`)
+    this.db.run(`CREATE TABLE IF NOT EXISTS app_invites (
+      code_hash TEXT PRIMARY KEY,
+      person_id INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    )`)
     this.db.run("PRAGMA foreign_keys = ON")
     this.migrateChats()
   }
@@ -562,18 +614,142 @@ export class Store {
     return row ? toPerson(row) : undefined
   }
 
-  /** Record that a Telegram user sent a message, keeping their display name current. */
-  seePerson(id: number, name: string | null, username: string | null, now = Date.now()): void {
+  /** Record that a Telegram user sent a message, keeping their display name current. Returns their person ID. */
+  seePerson(telegramId: number, name: string | null, username: string | null, now = Date.now()): number {
+    const linked = this.db.query<{ user_id: number }, [number]>("SELECT user_id FROM people WHERE telegram_id = ?").get(telegramId)
+    if (linked) {
+      this.db.query("UPDATE people SET name = ?, username = ?, seen_at = ? WHERE user_id = ?").run(name, username, now, linked.user_id)
+      return linked.user_id
+    }
     this.db
       .query(
-        `INSERT INTO people (user_id, name, username, seen_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET name = excluded.name, username = excluded.username, seen_at = excluded.seen_at`,
+        `INSERT INTO people (user_id, telegram_id, name, username, seen_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET telegram_id = excluded.telegram_id, name = excluded.name, username = excluded.username, seen_at = excluded.seen_at`,
       )
-      .run(id, name, username, now)
+      .run(telegramId, telegramId, name, username, now)
+    return telegramId
+  }
+
+  personByTelegram(telegramId: number): Person | undefined {
+    const row = this.db.query<PersonRow, [number]>("SELECT * FROM people WHERE telegram_id = ?").get(telegramId)
+    return row ? toPerson(row) : undefined
+  }
+
+  /** Someone who starts in the app, without Telegram. Their app-only chat shares their ID. */
+  createAppPerson(name: string | null): Person {
+    const id = this.nextAppId()
+    this.db.query("INSERT INTO people (user_id, app_chat_id, name) VALUES (?, ?, ?)").run(id, id, name)
+    return this.person(id)!
+  }
+
+  /** The chat a person's app-only conversations live in, created on first use. */
+  appChatOf(personId: number): number {
+    const person = this.person(personId)
+    if (!person) throw new Error(`No person ${personId}`)
+    if (person.appChatId !== null) return person.appChatId
+    const chatId = this.nextAppId()
+    this.db.query("UPDATE people SET app_chat_id = ? WHERE user_id = ?").run(chatId, personId)
+    return chatId
+  }
+
+  private nextAppId(): number {
+    const row = this.db
+      .query<{ top: number | null }, [number, number]>(
+        "SELECT MAX(v) AS top FROM (SELECT user_id AS v FROM people WHERE user_id >= ? UNION ALL SELECT app_chat_id FROM people WHERE app_chat_id >= ?)",
+      )
+      .get(APP_ID_BASE, APP_ID_BASE)
+    return row?.top ? row.top + 1 : APP_ID_BASE
+  }
+
+  /** The person a private chat belongs to: an app-only chat's owner, or the Telegram user. Groups have none. */
+  ownerOfChat(chatId: number): number | null {
+    if (isAppChat(chatId)) return this.db.query<{ user_id: number }, [number]>("SELECT user_id FROM people WHERE app_chat_id = ?").get(chatId)?.user_id ?? null
+    if (chatId <= 0) return null
+    return this.db.query<{ user_id: number }, [number]>("SELECT user_id FROM people WHERE telegram_id = ?").get(chatId)?.user_id ?? chatId
+  }
+
+  /** A person's private conversations, in Telegram and in the app, most recent first. Groups are left out. */
+  conversationsOf(personId: number, limit = 100): ChatState[] {
+    const person = this.person(personId)
+    const chats = [person?.telegramId ?? null, person?.appChatId ?? null].filter((c): c is number => c !== null)
+    if (!chats.length) return []
+    return this.db
+      .query<Row, number[]>(`SELECT * FROM threads WHERE chat_id IN (${chats.map(() => "?").join(", ")}) ORDER BY updated_at DESC LIMIT ?`)
+      .all(...chats, limit)
+      .map(toState)
+  }
+
+  /** The next free thread number in an app-only chat. */
+  nextAppThread(chatId: number): number {
+    const row = this.db.query<{ top: number | null }, [number]>("SELECT MAX(thread_id) AS top FROM threads WHERE chat_id = ?").get(chatId)
+    return (row?.top ?? 0) + 1
+  }
+
+  addInvite(codeHash: string, personId: number, expiresAt: number, now = Date.now()): void {
+    this.db.query("INSERT INTO app_invites (code_hash, person_id, created_at, expires_at) VALUES (?, ?, ?, ?)").run(codeHash, personId, now, expiresAt)
+  }
+
+  /** Use up an invite. Returns whose it was, or undefined when it's unknown, used or expired. */
+  takeInvite(codeHash: string, now = Date.now()): number | undefined {
+    return (
+      this.db
+        .query<{ person_id: number }, [number, string, number]>(
+          "UPDATE app_invites SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING person_id",
+        )
+        .get(now, codeHash, now)?.person_id ?? undefined
+    )
+  }
+
+  /** Invites that can still be used, per person. */
+  openInvites(now = Date.now()): Map<number, number> {
+    const rows = this.db
+      .query<{ person_id: number; n: number }, [number]>("SELECT person_id, COUNT(*) AS n FROM app_invites WHERE used_at IS NULL AND expires_at > ? GROUP BY person_id")
+      .all(now)
+    return new Map(rows.map((r) => [r.person_id, r.n]))
+  }
+
+  addDevice(d: { id: string; personId: number; tokenHash: string; name: string | null; platform: string | null }, now = Date.now()): AppDevice {
+    this.db
+      .query("INSERT INTO app_devices (id, person_id, token_hash, name, platform, created_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(d.id, d.personId, d.tokenHash, d.name, d.platform, now, now)
+    return this.device(d.id)!
+  }
+
+  device(id: string): AppDevice | undefined {
+    const row = this.db.query<DeviceRow, [string]>("SELECT * FROM app_devices WHERE id = ?").get(id)
+    return row ? toDevice(row) : undefined
+  }
+
+  deviceByToken(tokenHash: string): AppDevice | undefined {
+    const row = this.db.query<DeviceRow, [string]>("SELECT * FROM app_devices WHERE token_hash = ?").get(tokenHash)
+    return row ? toDevice(row) : undefined
+  }
+
+  devicesOf(personId: number): AppDevice[] {
+    return this.db.query<DeviceRow, [number]>("SELECT * FROM app_devices WHERE person_id = ? ORDER BY created_at").all(personId).map(toDevice)
+  }
+
+  touchDevice(id: string, now = Date.now()): void {
+    this.db.query("UPDATE app_devices SET seen_at = ? WHERE id = ?").run(now, id)
+  }
+
+  setPushToken(id: string, token: string | null): void {
+    // A token belongs to one installation; if another device row had it, that sign-in is stale.
+    if (token) this.db.query("UPDATE app_devices SET push_token = NULL WHERE push_token = ? AND id != ?").run(token, id)
+    this.db.query("UPDATE app_devices SET push_token = ? WHERE id = ?").run(token, id)
+  }
+
+  /** Expo said the token is no longer valid. */
+  dropPushToken(token: string): void {
+    this.db.query("UPDATE app_devices SET push_token = NULL WHERE push_token = ?").run(token)
+  }
+
+  deleteDevice(id: string): void {
+    this.db.query("DELETE FROM app_devices WHERE id = ?").run(id)
   }
 
   updatePerson(id: number, patch: Partial<Pick<Person, "personaId" | "memoryMode" | "spendDaily" | "spendMonthly" | "spendExempt">>): Person {
-    this.db.query("INSERT OR IGNORE INTO people (user_id) VALUES (?)").run(id)
+    this.db.query("INSERT OR IGNORE INTO people (user_id, telegram_id) VALUES (?, ?)").run(id, id < APP_ID_BASE ? id : null)
     if (patch.personaId !== undefined) this.db.query("UPDATE people SET persona_id = ? WHERE user_id = ?").run(patch.personaId, id)
     if (patch.memoryMode !== undefined) this.db.query("UPDATE people SET memory_mode = ? WHERE user_id = ?").run(patch.memoryMode, id)
     if (patch.spendDaily !== undefined) this.db.query("UPDATE people SET spend_daily = ? WHERE user_id = ?").run(patch.spendDaily, id)
@@ -756,8 +932,25 @@ function toPersona(r: PersonaRow): Persona {
   return { id: r.id, name: r.name, prompt: r.prompt, createdAt: r.created_at, updatedAt: r.updated_at }
 }
 
+type DeviceRow = {
+  id: string
+  person_id: number
+  token_hash: string
+  name: string | null
+  platform: string | null
+  push_token: string | null
+  created_at: number
+  seen_at: number | null
+}
+
+function toDevice(r: DeviceRow): AppDevice {
+  return { id: r.id, personId: r.person_id, name: r.name, platform: r.platform, pushToken: r.push_token, createdAt: r.created_at, seenAt: r.seen_at }
+}
+
 type PersonRow = {
   user_id: number
+  telegram_id: number | null
+  app_chat_id: number | null
   name: string | null
   username: string | null
   persona_id: number | null
@@ -772,6 +965,8 @@ function toPerson(r: PersonRow): Person {
   const mode = MEMORY_MODES.find((m) => m === r.memory_mode) ?? null
   return {
     id: r.user_id,
+    telegramId: r.telegram_id ?? null,
+    appChatId: r.app_chat_id ?? null,
     name: r.name,
     username: r.username,
     personaId: r.persona_id,

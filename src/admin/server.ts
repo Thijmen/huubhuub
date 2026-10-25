@@ -18,6 +18,8 @@ import { MEMORY_MODES, type ChatState, type MemoryMode, type Schedule, type Stor
 import { conversation, eventStream, toolCalls } from "./chat"
 import type { SpendLimits } from "../spend-limits"
 import type { Usage } from "../usage"
+import { renderSVG } from "uqr"
+import { AccessError, type AppAccess } from "../app-api/access"
 import index from "./web/index.html"
 
 interface Deps {
@@ -35,6 +37,7 @@ interface Deps {
   githubAccess: GitHubAccess
   usage: Usage
   limits: SpendLimits
+  appAccess: AppAccess
   token: string
 }
 
@@ -59,7 +62,8 @@ export function startAdmin(deps: Deps) {
       const result = await handler(req, deps, server)
       return result instanceof Response ? result : json(result ?? { ok: true })
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : err instanceof SkillError || err instanceof SpecError || err instanceof MemoryError ? 400 : 500
+      const status =
+        err instanceof HttpError ? err.status : err instanceof SkillError || err instanceof SpecError || err instanceof MemoryError || err instanceof AccessError ? 400 : 500
       if (status === 500) console.error(`admin ${req.method} ${new URL(req.url).pathname} failed`, err)
       return json({ error: errorMessage(err) }, status)
     }
@@ -341,6 +345,22 @@ export function startAdmin(deps: Deps) {
       },
 
       "/api/people": { GET: api((_, d) => peopleView(d)) },
+      "/api/people/app": {
+        POST: api(async (req, d) => {
+          const { name } = await read<{ name?: string }>(req)
+          const clean = name?.trim().slice(0, 60)
+          if (!clean) throw new HttpError(400, "Give them a name, so you know who's who.")
+          if (!d.config.APP_PUBLIC_URL) throw new HttpError(400, "Set APP_PUBLIC_URL to the address phones reach the app API on (behind TLS) before inviting anyone.")
+          const person = d.store.createAppPerson(clean)
+          return { person, ...appInvite(d, person.id) }
+        }),
+      },
+      "/api/people/:id/app-invite": { POST: api((req, d) => appInvite(d, userId(req))) },
+      "/api/app-devices/:id": {
+        DELETE: api((req, d) => {
+          d.store.deleteDevice(param(req, "id"))
+        }),
+      },
       "/api/people/:id": {
         PUT: api(async (req, d) => {
           const id = userId(req)
@@ -676,7 +696,7 @@ async function threadRows(d: Deps, rows: ChatState[]) {
         cost: s?.cost ?? 0,
         tokens: s ? s.tokens.input + s.tokens.output : 0,
         busy: r.sessionID in active,
-        userId: r.userId ?? (r.chatId > 0 ? r.chatId : null),
+        userId: r.userId ?? d.store.ownerOfChat(r.chatId),
       }
     }),
   )
@@ -776,8 +796,11 @@ function personaInput(body: { name?: string; prompt?: string }): { name: string;
 async function peopleView(d: Deps) {
   const seen = d.store.people()
   const ids = new Set(seen.map((p) => p.id))
-  const unseen = d.config.ALLOWED_USER_IDS.filter((id) => !ids.has(id)).map((id) => ({
+  const linked = new Set(seen.flatMap((p) => (p.telegramId === null ? [] : [p.telegramId])))
+  const unseen = d.config.ALLOWED_USER_IDS.filter((id) => !ids.has(id) && !linked.has(id)).map((id) => ({
     id,
+    telegramId: id,
+    appChatId: null,
     name: null,
     username: null,
     personaId: null,
@@ -789,18 +812,28 @@ async function peopleView(d: Deps) {
   }))
   const all = [...seen, ...unseen]
   const spend = await Promise.all(all.map((p) => d.limits.spend(p.id).catch(() => null)))
+  const invites = d.store.openInvites()
   return {
     defaultPersonaId: d.personas.defaultPersonaId,
     defaultMemoryMode: d.personas.defaultMemoryMode,
     defaultLimits: { daily: d.config.SPEND_LIMIT_DAILY ?? null, monthly: d.config.SPEND_LIMIT_MONTHLY ?? null },
     personas: d.store.personas().map((p) => ({ id: p.id, name: p.name })),
+    appEnabled: Boolean(d.config.APP_PORT && d.config.APP_PUBLIC_URL),
     people: all.map((p, i) => ({
       ...p,
-      allowed: d.config.ALLOWED_USER_IDS.includes(p.id),
+      allowed: d.config.ALLOWED_USER_IDS.includes(p.telegramId ?? p.id),
+      devices: d.store.devicesOf(p.id),
+      openInvites: invites.get(p.id) ?? 0,
       memories: d.store.memories(p.id),
       spend: spend[i],
     })),
   }
+}
+
+/** A one-time app invite for a person, with a QR code of the link for the admin UI. */
+function appInvite(d: Deps, personId: number) {
+  const { url, expiresAt } = d.appAccess.invite(personId)
+  return { url, expiresAt, qr: renderSVG(url, { border: 2 }) }
 }
 
 /** A person's own limit: a dollar amount, `null` for the default, or `undefined` to leave it alone. */
@@ -815,7 +848,7 @@ function limitInput(value: number | string | null | undefined): number | null | 
 
 function userId(req: Bun.BunRequest): number {
   const id = Number(param(req, "id"))
-  if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, "Expected a Telegram user ID.")
+  if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, "Expected a person ID.")
   return id
 }
 

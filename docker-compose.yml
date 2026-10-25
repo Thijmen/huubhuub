@@ -9,6 +9,8 @@ services:
       - "127.0.0.1:8080:8080"
       # OpenCode web UI, opened from the admin UI. Same advice applies.
       - "127.0.0.1:4196:4196"
+      # Phone app API. Meant to be public, but only through a TLS proxy; set APP_PUBLIC_URL to that address.
+      - "127.0.0.1:8081:8081"
     volumes:
       - ./workspace:/workspace
       - bot-data:/data
