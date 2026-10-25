@@ -1,6 +1,6 @@
 import { Redirect, router, Stack, useFocusEffect } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, Text, TextInput, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg"
 import type { ConversationSummary, SearchResult } from "@server/protocol"
@@ -10,6 +10,7 @@ import { showConversationActions } from "@/lib/conversation-actions"
 import { t, tagline } from "@/lib/i18n"
 import { registerPush } from "@/lib/push"
 import { useSession } from "@/lib/session"
+import { useAppUpdate } from "@/lib/updates"
 import { font, radius, space, useTheme } from "@/theme"
 
 const POLL_MS = 8000
@@ -150,11 +151,14 @@ function Conversations() {
         contentContainerStyle={{ paddingTop: space.xs, paddingBottom: insets.bottom + 120, flexGrow: 1 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={c.primary} colors={[c.primary]} progressBackgroundColor={c.surface} />}
         ListHeaderComponent={
-          error ? (
-            <Text selectable style={{ color: c.danger, fontSize: font.size.small, paddingHorizontal: 22, paddingVertical: space.sm }}>
-              {error}
-            </Text>
-          ) : undefined
+          <>
+            {!results && <NewApkCard />}
+            {!!error && (
+              <Text selectable style={{ color: c.danger, fontSize: font.size.small, paddingHorizontal: 22, paddingVertical: space.sm }}>
+                {error}
+              </Text>
+            )}
+          </>
         }
         ListEmptyComponent={
           results ? (
@@ -215,6 +219,37 @@ function Conversations() {
         <Icon name="new" size={22} color={c.onPrimary} />
         <Text style={{ color: c.onPrimary, fontFamily: font.rounded, fontSize: font.size.body }}>{t("newConversation")}</Text>
       </Pressable>
+    </View>
+  )
+}
+
+/** A new APK that over-the-air updates can't replace: download it, or put it off until the next start. */
+function NewApkCard() {
+  const { c } = useTheme()
+  const { apk, putOff, later } = useAppUpdate()
+  if (!apk || putOff) return null
+  return (
+    <View style={{ marginHorizontal: space.md, marginTop: space.sm, marginBottom: space.xs, padding: 14, gap: space.md, backgroundColor: c.surface, borderRadius: radius.card, borderCurve: "continuous", borderWidth: 1.5, borderColor: c.questionBorder, boxShadow: c.shadow }}>
+      <View style={{ flexDirection: "row", gap: space.md }}>
+        <View style={{ width: 44, height: 44, borderRadius: radius.tile, backgroundColor: c.primarySoft, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontSize: 22 }}>📲</Text>
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.label, lineHeight: 20 }}>{t("apkTitle")}</Text>
+          <Text style={{ color: c.textMuted, fontSize: 13, lineHeight: 18 }}>{t("apkBody")}</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: space.lg }}>
+        <Pressable onPress={later} hitSlop={8}>
+          <Text style={{ color: c.textMuted, fontSize: font.size.small, fontWeight: "600" }}>{t("apkLater")}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void Linking.openURL(apk.url)}
+          style={({ pressed }) => ({ backgroundColor: c.primary, opacity: pressed ? 0.85 : 1, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: 9 })}
+        >
+          <Text style={{ color: c.onPrimary, fontFamily: font.rounded, fontSize: font.size.small }}>{t("apkDownload")}</Text>
+        </Pressable>
+      </View>
     </View>
   )
 }

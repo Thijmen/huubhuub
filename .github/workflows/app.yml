@@ -1,5 +1,10 @@
-# The phone app (app/). Pull requests: typecheck and tests. Pushes to main that touch the app: an Android APK
-# when native code changed (its fingerprint), otherwise an over-the-air update to the APKs already installed.
+# The phone app (app/). Pull requests: typecheck, tests, and whether merging ships over the air or needs a new
+# APK. Pushes to main that touch the app: an Android APK when native code changed (its fingerprint), otherwise
+# an over-the-air update to the APKs already installed. Each APK is also published on the rolling GitHub release
+# "app-android" (huubhuub.apk and latest.json), which installed apps check to offer the download, and which
+# outlives EAS's artifact links (they expire after a few weeks).
+#
+# Running the workflow by hand republishes the current APK on the app-android release.
 #
 # Needs the repository secret EXPO_TOKEN (an Expo access token) and the project ID in app/app.config.ts; the
 # deploy job is skipped without the token. Before the first run, build once by hand so EAS has the signing key:
@@ -32,6 +37,24 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
+      - name: Over the air, or a new APK?
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        # Installed apps only get over-the-air updates made for their own native code. A changed fingerprint
+        # means merging builds a new APK, and phones need to install it before they get anything newer.
+        run: |
+          fingerprint() { bunx expo-updates fingerprint:generate --platform android | jq -r .hash; }
+          head=$(fingerprint)
+          git fetch --quiet --depth=1 origin "$BASE"
+          git worktree add --quiet "$RUNNER_TEMP/base" "$BASE"
+          base=$(cd "$RUNNER_TEMP/base/app" && bun install --frozen-lockfile >/dev/null && fingerprint)
+          if [ "$head" = "$base" ]; then
+            echo "Native code unchanged (\`$head\`): merging ships as an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::This changes the app's native code (fingerprint $base → $head). Merging builds a new APK; installed apps offer to download it, and get no further updates until it's installed."
+            echo "Native code changed (\`$base\` → \`$head\`): merging builds a new APK." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   deploy:
     needs: check
@@ -81,7 +104,48 @@ jobs:
           FINGERPRINT: ${{ steps.deploy.outputs.android-fingerprint }}
         run: |
           if [ -n "$BUILD" ]; then
-            echo "Started APK build \`$BUILD\`. When it's done, open it under Builds on expo.dev and scan its QR code with the phone to install." >> "$GITHUB_STEP_SUMMARY"
+            echo "Started APK build \`$BUILD\`; it's published on the app-android release when it's done." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Published an update for fingerprint \`$FINGERPRINT\`; installed apps pick it up on their next start." >> "$GITHUB_STEP_SUMMARY"
+            echo "Published an update for fingerprint \`$FINGERPRINT\`; installed apps download it in the background and switch to it the next time they're opened." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Publish the APK on GitHub
+        # After a new build, or when run by hand (which republishes the newest build of the current native code).
+        if: steps.token.outputs.present == 'true' && (steps.deploy.outputs.android-build-id != '' || github.event_name == 'workflow_dispatch')
+        working-directory: app
+        env:
+          BUILD: ${{ steps.deploy.outputs.android-build-id }}
+          FINGERPRINT: ${{ steps.deploy.outputs.android-fingerprint }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: app-android
+        run: |
+          if [ -z "$BUILD" ]; then
+            BUILD=$(eas build:list -p android -e preview --status finished --fingerprint-hash "$FINGERPRINT" --limit 1 --json | jq -r '.[0].id // empty')
+            [ -n "$BUILD" ] || { echo "::error::No finished APK build for fingerprint $FINGERPRINT"; exit 1; }
+          fi
+          # The build runs on EAS; wait for it, up to an hour.
+          for _ in $(seq 120); do
+            eas build:view "$BUILD" --json > build.json
+            status=$(jq -r .status build.json)
+            [ "$status" = FINISHED ] && break
+            case "$status" in ERRORED|CANCELED) echo "::error::APK build $BUILD ended as $status"; exit 1 ;; esac
+            sleep 30
+          done
+          [ "$status" = FINISHED ] || { echo "::error::APK build $BUILD didn't finish within an hour"; exit 1; }
+
+          curl -fsSL -o huubhuub.apk "$(jq -r .artifacts.buildUrl build.json)"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/huubhuub.apk"
+          jq -n --slurpfile b build.json --arg url "$url" --argjson size "$(stat -c %s huubhuub.apk)" --arg commit "$GITHUB_SHA" \
+            '$b[0] | {versionCode: (.appBuildVersion | tonumber), version: .appVersion, fingerprint: .runtime.version, url: $url, size: $size, commit: $commit, publishedAt: .completedAt}' > latest.json
+          cat latest.json
+
+          version=$(jq -r '"\(.version) (\(.versionCode))"' latest.json)
+          notes="The newest HuubHuub app for Android, version ${version}. Download huubhuub.apk on the phone and open it to install; installing over an older version keeps you signed in. Installed apps offer this download themselves when it's needed. Smaller updates arrive over the air."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "HuubHuub for Android" --notes "$notes"
+          else
+            gh release create "$TAG" --title "HuubHuub for Android" --notes "$notes" --latest=false
+          fi
+          # The APK first, so latest.json never points at an older one.
+          gh release upload "$TAG" huubhuub.apk --clobber
+          gh release upload "$TAG" latest.json --clobber
+          echo "Published version ${version} on [the app-android release](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG})." >> "$GITHUB_STEP_SUMMARY"
