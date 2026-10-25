@@ -3,12 +3,13 @@ import { useMemo, useState } from "react"
 import { FlatList, Pressable, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { AppMessage } from "@server/protocol"
-import { HuubAvatar } from "@/components/art"
+import { HuubAvatar, Icon } from "@/components/art"
 import { Composer } from "@/components/composer"
 import { KeyboardView } from "@/components/keyboard-view"
 import { HuubBubble, UserBubble, WorkingLine } from "@/components/message"
 import { QuestionCard } from "@/components/question-card"
 import type { Pending } from "@/lib/chat-state"
+import { showConversationActions } from "@/lib/conversation-actions"
 import { t } from "@/lib/i18n"
 import type { Photo } from "@/lib/media"
 import { useApi, useSession } from "@/lib/session"
@@ -69,8 +70,8 @@ type Item = { kind: "message"; message: AppMessage; showAvatar: boolean } | { ki
 function Chat({ id }: { id: string }) {
   const { c } = useTheme()
   const insets = useSafeAreaInsets()
-  const { session } = useSession()
-  const { state, error, send, stop, answer, loadOlder, transcribe } = useConversation(id)
+  const { session, api } = useSession()
+  const { state, error, send, stop, answer, loadOlder, transcribe, organised } = useConversation(id)
 
   // Newest first, for an inverted list that starts at the bottom.
   const items = useMemo<Item[]>(() => {
@@ -89,7 +90,21 @@ function Chat({ id }: { id: string }) {
 
   return (
     <>
-      <Stack.Screen options={{ title: state.title ?? (state.loaded ? t("untitled") : "") }} />
+      <Stack.Screen
+        options={{
+          title: state.title ?? (state.loaded ? t("untitled") : ""),
+          headerRight: () =>
+            state.loaded && api ? (
+              <Pressable
+                hitSlop={10}
+                accessibilityLabel={t("archive")}
+                onPress={() => showConversationActions(api, { id, title: state.title, pinned: state.pinned, archived: state.archived }, organised)}
+              >
+                <Icon name="more" color={c.text} />
+              </Pressable>
+            ) : null,
+        }}
+      />
       <KeyboardView>
         <FlatList
           inverted

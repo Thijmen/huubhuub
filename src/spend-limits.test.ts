@@ -34,7 +34,7 @@ function setup(opts: { person?: Partial<Person>; daily?: number; monthly?: numbe
     config: { SCHEDULE_TIMEZONE: TZ, SPEND_LIMIT_DAILY: opts.daily, SPEND_LIMIT_MONTHLY: opts.monthly },
     store: {
       person: (id) => (opts.person ? ({ id, name: null, username: null, personaId: null, memoryMode: null, seenAt: null, spendDaily: null, spendMonthly: null, spendExempt: false, ...opts.person } as Person) : undefined),
-      bySession: (id) => (id === "root" ? { chatId: 1, threadId: 9, sessionID: "root", userId: 1, autoTitle: false, updatedAt: 0 } : undefined),
+      bySession: (id) => (id === "root" ? { chatId: 1, threadId: 9, sessionID: "root", userId: 1, autoTitle: false, updatedAt: 0, pinned: false, archivedAt: null } : undefined),
     },
     usage: {
       ready: async () => {},

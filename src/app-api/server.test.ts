@@ -40,7 +40,7 @@ beforeAll(() => {
       },
       session: { active: async () => ({ ses_busy: {} }) },
     },
-    getSession: async (id: string) => ({ title: `Titel ${id}` }),
+    getSession: async (id: string) => ({ title: `Titel ${id}`, time: { updated: 1 } }),
     subscribe: (id: string, fn: (e: SessionEvent) => void) => {
       listeners.set(id, fn)
       return () => listeners.delete(id)
@@ -148,7 +148,7 @@ describe("app API", () => {
     store.set({ chatId: 43, threadId: 9 }, "ses_busy")
     const token = await signIn(43)
     const list = (await (await call("/v1/conversations", { token })).json()) as ConversationList
-    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", telegram: true }])
+    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", telegram: true, pinned: false, archived: false }])
   })
 
   test("live events in the app's format", async () => {
@@ -211,5 +211,43 @@ describe("app API", () => {
     const silent = await call("/v1/transcribe", { method: "POST", token, body: { audio: Buffer.from("ab").toString("base64"), mime: "audio/mp4" } })
     expect(silent.status).toBe(422)
     expect((await call("/v1/transcribe", { method: "POST", token, body: { mime: "audio/mp4" } })).status).toBe(400)
+  })
+
+  test("pinning, archiving, and writing brings it back", async () => {
+    const p = store.createAppPerson("Organise")
+    const token = await signIn(p.id)
+    const chat = store.appChatOf(p.id)
+    store.set({ chatId: chat, threadId: 1 }, "ses_a")
+    store.set({ chatId: chat, threadId: 2 }, "ses_b")
+    store.set({ chatId: chat, threadId: 3 }, "ses_c")
+    const ids = async (q = "") => ((await (await call(`/v1/conversations${q}`, { token })).json()) as ConversationList).conversations.map((c) => c.id)
+
+    const pinned = await call("/v1/conversations/ses_a", { method: "PATCH", token, body: { pinned: true } })
+    expect(await pinned.json()).toMatchObject({ id: "ses_a", pinned: true, archived: false })
+    expect((await ids())[0]).toBe("ses_a")
+
+    await call("/v1/conversations/ses_b", { method: "PATCH", token, body: { archived: true } })
+    expect(await ids()).not.toContain("ses_b")
+    expect(await ids("?archived=1")).toEqual(["ses_b"])
+
+    // Archiving a pinned conversation unpins it.
+    await call("/v1/conversations/ses_a", { method: "PATCH", token, body: { archived: true } })
+    expect(store.bySession("ses_a")).toMatchObject({ pinned: false })
+
+    store.touch({ chatId: chat, threadId: 2 }, p.id)
+    expect(await ids()).toContain("ses_b")
+    expect((await call("/v1/conversations/ses_bram", { method: "PATCH", token, body: { pinned: true } })).status).toBe(404)
+  })
+
+  test("search finds titles and what was said", async () => {
+    const p = store.createAppPerson("Search")
+    const token = await signIn(p.id)
+    store.set({ chatId: store.appChatOf(p.id), threadId: 1 }, "ses_zoek")
+    const search = async (q: string) => (await (await call(`/v1/search?q=${encodeURIComponent(q)}`, { token })).json()) as { results: { conversation: { id: string }; snippet: string | null }[] }
+    expect((await search("antwoord in SES_ZOEK")).results).toEqual([{ conversation: expect.objectContaining({ id: "ses_zoek" }), snippet: "Antwoord in ses_zoek" }])
+    expect((await search("Titel ses_zoek")).results).toEqual([{ conversation: expect.objectContaining({ id: "ses_zoek" }), snippet: null }])
+    expect((await search("x")).results).toEqual([])
+    // Other people's conversations stay out of it.
+    expect((await search("ses_bram")).results).toEqual([])
   })
 })

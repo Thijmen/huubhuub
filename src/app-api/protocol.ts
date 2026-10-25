@@ -50,10 +50,31 @@ export interface ConversationSummary {
   preview: string | null
   /** The conversation is also a Telegram topic. */
   telegram: boolean
+  /** Kept at the top of the list. */
+  pinned: boolean
+  /** Moved out of the list; writing in it brings it back. */
+  archived: boolean
 }
 
+/** `GET /v1/conversations` lists active conversations, pinned first; `?archived=1` lists archived ones. */
 export interface ConversationList {
   conversations: ConversationSummary[]
+}
+
+export interface ConversationPatch {
+  pinned?: boolean
+  archived?: boolean
+}
+
+export interface SearchResult {
+  conversation: ConversationSummary
+  /** The matching text, shortened; null when only the title matched. */
+  snippet: string | null
+}
+
+/** `GET /v1/search?q=…`: titles and what was said, across all conversations including archived ones. */
+export interface SearchResponse {
+  results: SearchResult[]
 }
 
 /** A photo to send along: JPEG, PNG, GIF or WebP, base64-encoded. At most 4 per message, 10 MB each. */

@@ -125,5 +125,7 @@ export function useConversation(id: string) {
 
   const transcribe = useCallback(async (audio: string, mime: string) => (await api.transcribe(audio, mime)).text, [api])
 
-  return { state, error, send, stop, answer, loadOlder, reload, transcribe }
+  const organised = useCallback((c: { pinned: boolean; archived: boolean }) => dispatch({ type: "organised", pinned: c.pinned, archived: c.archived }), [])
+
+  return { state, error, send, stop, answer, loadOlder, reload, transcribe, organised }
 }

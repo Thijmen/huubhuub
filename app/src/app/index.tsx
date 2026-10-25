@@ -1,11 +1,12 @@
 import { Link, Redirect, router, Stack, useFocusEffect } from "expo-router"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { FlatList, Pressable, RefreshControl, Text, View } from "react-native"
-import Animated, { FadeIn } from "react-native-reanimated"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import type { ConversationSummary } from "@server/protocol"
+import type { ConversationSummary, SearchResult } from "@server/protocol"
 import { HuubAvatar, Icon } from "@/components/art"
-import { relativeTime, t } from "@/lib/i18n"
+import { ConversationRow } from "@/components/conversation-row"
+import { showConversationActions } from "@/lib/conversation-actions"
+import { t } from "@/lib/i18n"
 import { registerPush } from "@/lib/push"
 import { useSession } from "@/lib/session"
 import { font, radius, space, useTheme } from "@/theme"
@@ -18,6 +19,8 @@ export default function ConversationsScreen() {
   return <Conversations />
 }
 
+type Row = { kind: "header"; label: string } | { kind: "conversation"; item: ConversationSummary } | { kind: "result"; result: SearchResult }
+
 function Conversations() {
   const { c } = useTheme()
   const { api, session } = useSession()
@@ -25,6 +28,9 @@ function Conversations() {
   const [list, setList] = useState<ConversationSummary[]>()
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [query, setQuery] = useState("")
+  const [results, setResults] = useState<SearchResult[] | null>(null)
+  const [searching, setSearching] = useState(false)
   const pushed = useRef(false)
 
   const load = useCallback(async () => {
@@ -51,11 +57,45 @@ function Conversations() {
     void registerPush(api).catch(() => {})
   }, [api])
 
+  // Search as you type, a moment after the last key.
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setResults(null)
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    const timer = setTimeout(() => {
+      api!
+        .search(q)
+        .then((r) => setResults(r.results))
+        .catch((err: Error) => setError(err.message))
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [api, query])
+
   const refresh = async () => {
     setRefreshing(true)
     await load()
     setRefreshing(false)
   }
+
+  const changed = (conv: ConversationSummary) => {
+    setList((l) => (conv.archived ? l?.filter((x) => x.id !== conv.id) : l?.map((x) => (x.id === conv.id ? conv : x))))
+    void load()
+  }
+
+  const rows = useMemo<Row[]>(() => {
+    if (results) return results.map((result) => ({ kind: "result", result }))
+    const all = list ?? []
+    const pinned = all.filter((x) => x.pinned)
+    const rest = all.filter((x) => !x.pinned)
+    const items = (xs: ConversationSummary[]) => xs.map((item): Row => ({ kind: "conversation", item }))
+    if (!pinned.length) return items(rest)
+    return [{ kind: "header", label: t("pinned") }, ...items(pinned), ...(rest.length ? [{ kind: "header" as const, label: t("recent") }, ...items(rest)] : [])]
+  }, [list, results])
 
   return (
     <>
@@ -77,20 +117,69 @@ function Conversations() {
         }}
       />
       <FlatList
-        data={list ?? []}
-        keyExtractor={(item) => item.id}
+        data={rows}
+        keyExtractor={(row, i) => (row.kind === "header" ? `h-${row.label}` : row.kind === "conversation" ? row.item.id : `r-${row.result.conversation.id}-${i}`)}
         contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentContainerStyle={{ padding: space.lg, gap: space.sm, paddingBottom: insets.bottom + 110, flexGrow: 1 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={c.primary} colors={[c.primary]} />}
         ListHeaderComponent={
-          error ? (
-            <Text selectable style={{ color: c.danger, fontSize: font.size.small, paddingBottom: space.sm }}>
-              {error}
-            </Text>
+          <View style={{ gap: space.sm, paddingBottom: space.xs }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, backgroundColor: c.surfaceAlt, borderRadius: radius.md, borderCurve: "continuous", paddingHorizontal: space.md }}>
+              <Icon name="search" size={18} color={c.textMuted} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t("searchPlaceholder")}
+                placeholderTextColor={c.textMuted}
+                returnKeyType="search"
+                autoCorrect={false}
+                style={{ flex: 1, color: c.text, fontSize: font.size.body, paddingVertical: 10 }}
+              />
+              {searching ? (
+                <ActivityIndicator size="small" color={c.primary} />
+              ) : (
+                !!query && (
+                  <Pressable onPress={() => setQuery("")} hitSlop={8} accessibilityLabel={t("cancel")}>
+                    <Icon name="close" size={16} color={c.textMuted} />
+                  </Pressable>
+                )
+              )}
+            </View>
+            {!!error && (
+              <Text selectable style={{ color: c.danger, fontSize: font.size.small }}>
+                {error}
+              </Text>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          results ? (
+            <Text style={{ color: c.textMuted, textAlign: "center", padding: space.xxl }}>{t("noResults", { q: query.trim() })}</Text>
+          ) : list ? (
+            <EmptyList name={session?.me.person.name ?? null} />
           ) : undefined
         }
-        ListEmptyComponent={list ? <EmptyList name={session?.me.person.name ?? null} /> : undefined}
-        renderItem={({ item }) => <Row item={item} />}
+        ListFooterComponent={
+          !results && list ? (
+            <Link href="/archived" asChild>
+              <Pressable style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm, padding: space.lg }}>
+                <Icon name="archive" size={18} color={c.textMuted} />
+                <Text style={{ color: c.textMuted, fontSize: font.size.label, fontWeight: "600" }}>{t("archivedLink")}</Text>
+              </Pressable>
+            </Link>
+          ) : undefined
+        }
+        renderItem={({ item: row }) =>
+          row.kind === "header" ? (
+            <Text style={{ color: c.textMuted, fontSize: font.size.caption, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", paddingTop: space.sm }}>{row.label}</Text>
+          ) : row.kind === "conversation" ? (
+            <ConversationRow item={row.item} onLongPress={() => showConversationActions(api!, row.item, changed)} />
+          ) : (
+            <ConversationRow item={row.result.conversation} snippet={row.result.snippet} />
+          )
+        }
       />
       <Pressable
         onPress={() => router.push({ pathname: "/c/[id]", params: { id: "new" } })}
@@ -115,43 +204,6 @@ function Conversations() {
         <Text style={{ color: c.onPrimary, fontFamily: font.rounded, fontSize: font.size.label }}>{t("newConversation")}</Text>
       </Pressable>
     </>
-  )
-}
-
-function Row({ item }: { item: ConversationSummary }) {
-  const { c } = useTheme()
-  return (
-    <Link href={{ pathname: "/c/[id]", params: { id: item.id } }} asChild>
-      <Pressable
-        style={({ pressed }) => ({
-          backgroundColor: pressed ? c.surfaceAlt : c.surface,
-          borderColor: c.border,
-          borderWidth: 1,
-          borderRadius: radius.lg,
-          borderCurve: "continuous",
-          padding: space.lg,
-          gap: space.xs,
-        })}
-      >
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.sm }}>
-          <Text numberOfLines={1} style={{ flex: 1, color: c.text, fontFamily: font.roundedSemi, fontSize: font.size.heading, lineHeight: font.lineHeight.heading }}>
-            {item.title || t("untitled")}
-          </Text>
-          <Text style={{ color: c.textMuted, fontSize: font.size.caption, fontVariant: ["tabular-nums"] }}>{relativeTime(item.updatedAt)}</Text>
-        </View>
-        {item.busy ? (
-          <Animated.Text entering={FadeIn} style={{ color: c.primaryText, fontSize: font.size.small, lineHeight: font.lineHeight.small, fontWeight: "600" }}>
-            {t("typing")}
-          </Animated.Text>
-        ) : (
-          !!item.preview && (
-            <Text numberOfLines={2} style={{ color: c.textMuted, fontSize: font.size.small, lineHeight: font.lineHeight.small }}>
-              {item.preview}
-            </Text>
-          )
-        )}
-      </Pressable>
-    </Link>
   )
 }
 

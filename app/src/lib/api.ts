@@ -3,12 +3,14 @@ import type {
   AppEvent,
   ConversationList,
   ConversationPage,
+  ConversationPatch,
   ConversationSummary,
   ImageUpload,
   Me,
   PairResponse,
   Question,
   QuestionAction,
+  SearchResponse,
   TranscribeResponse,
 } from "@server/protocol"
 import { t } from "./i18n"
@@ -45,7 +47,9 @@ export class Api {
   }
 
   me = () => this.request<Me>("GET", "/v1/me")
-  conversations = () => this.request<ConversationList>("GET", "/v1/conversations")
+  conversations = (archived = false) => this.request<ConversationList>("GET", `/v1/conversations${archived ? "?archived=1" : ""}`)
+  update = (id: string, patch: ConversationPatch) => this.request<ConversationSummary>("PATCH", `/v1/conversations/${encodeURIComponent(id)}`, patch)
+  search = (q: string) => this.request<SearchResponse>("GET", `/v1/search?q=${encodeURIComponent(q)}`)
   conversation = (id: string, cursor?: string) =>
     this.request<ConversationPage>("GET", `/v1/conversations/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`)
   create = (text?: string, images: ImageUpload[] = []) =>

@@ -8,11 +8,13 @@ import { isAppChat, type AppDevice, type ChatState, type Store } from "../store"
 import { AccessError, type AppAccess } from "./access"
 import { AppEvents, previewOf, toAppMessages } from "./events"
 import { invitePage } from "./invite-page"
+import { ConversationSearch } from "./search"
 import {
   APP_API_VERSION,
   type AppEvent,
   type ConversationList,
   type ConversationPage,
+  type ConversationPatch,
   type ConversationSummary,
   type Me,
   type NewConversationRequest,
@@ -21,6 +23,7 @@ import {
   type PushTokenRequest,
   type ImageUpload,
   type QuestionRequest,
+  type SearchResponse,
   type SendRequest,
   type TranscribeRequest,
   type TranscribeResponse,
@@ -71,6 +74,9 @@ type Handler = (req: Req, device: AppDevice, server: Bun.Server<undefined>) => P
  */
 export function startAppApi(d: AppDeps) {
   const pairs = new PairLimiter()
+  const finder = new ConversationSearch((sessionID, cursor) =>
+    d.bridge.host.message.list({ sessionID, order: "desc", limit: 200, ...(cursor ? { cursor } : {}) }),
+  )
 
   const authed = (handler: Handler) => async (req: Req, server: Bun.Server<undefined>) => {
     const device = d.access.authenticate(req.headers.get("authorization"))
@@ -112,8 +118,9 @@ export function startAppApi(d: AppDeps) {
       },
 
       "/v1/conversations": {
-        GET: authed(async (_, device): Promise<ConversationList> => {
-          const threads = d.store.conversationsOf(device.personId, LIST_LIMIT)
+        GET: authed(async (req, device): Promise<ConversationList> => {
+          const archived = new URL(req.url).searchParams.get("archived") === "1"
+          const threads = d.store.conversationsOf(device.personId, LIST_LIMIT, archived)
           const active = await activeSessions(d)
           return { conversations: await Promise.all(threads.map((t) => summary(d, t, active))) }
         }),
@@ -126,7 +133,28 @@ export function startAppApi(d: AppDeps) {
           return summary(d, d.store.bySession(sessionID)!, await activeSessions(d))
         }),
       },
+      "/v1/search": {
+        GET: authed(async (req, device): Promise<SearchResponse> => {
+          const q = (new URL(req.url).searchParams.get("q") ?? "").slice(0, 200)
+          const threads = d.store.conversationsOf(device.personId, LIST_LIMIT, "all")
+          const sessions = await Promise.all(threads.map((t) => d.bridge.getSession(t.sessionID).catch(() => undefined)))
+          const byId = new Map(threads.map((t) => [t.sessionID, t]))
+          const searchable = threads
+            .map((t, i) => ({ sessionID: t.sessionID, title: sessions[i]?.title ?? null, updated: sessions[i]?.time.updated ?? t.updatedAt }))
+            .sort((a, b) => b.updated - a.updated)
+          const hits = await finder.search(q, searchable)
+          const active = await activeSessions(d)
+          return { results: await Promise.all(hits.map(async (h) => ({ conversation: await summary(d, byId.get(h.sessionID)!, active), snippet: h.snippet }))) }
+        }),
+      },
       "/v1/conversations/:id": {
+        PATCH: authed(async (req, device): Promise<ConversationSummary> => {
+          const thread = owned(d, device, req)
+          const patch = await read<ConversationPatch>(req)
+          if (typeof patch.archived === "boolean") d.store.setArchived(thread, patch.archived)
+          if (typeof patch.pinned === "boolean") d.store.setPinned(thread, patch.pinned)
+          return summary(d, d.store.bySession(thread.sessionID)!, await activeSessions(d))
+        }),
         GET: authed(async (req, device): Promise<ConversationPage> => {
           const thread = owned(d, device, req)
           const cursor = new URL(req.url).searchParams.get("cursor") ?? undefined
@@ -248,6 +276,8 @@ async function summary(d: AppDeps, t: ChatState, active: Set<string>, loaded?: R
     busy: active.has(t.sessionID),
     preview: previewOf(messages),
     telegram: !isAppChat(t.chatId),
+    pinned: t.pinned,
+    archived: t.archivedAt !== null,
   }
 }
 

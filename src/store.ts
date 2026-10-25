@@ -27,6 +27,10 @@ export interface ChatState extends ChatKey {
   /** The bot created this topic, so it may rename it after the session title. */
   autoTitle: boolean
   updatedAt: number
+  /** Kept at the top of the app's conversation list. */
+  pinned: boolean
+  /** Epoch ms when it was archived in the app; null when it isn't. */
+  archivedAt: number | null
 }
 
 export interface McpRecord {
@@ -255,7 +259,10 @@ export class Store {
       updated_at INTEGER NOT NULL
     )`)
     this.db.run("CREATE INDEX IF NOT EXISTS memories_by_user ON memories (user_id, id)")
-    if (!this.columns("threads").some((c) => c.name === "user_id")) this.db.run("ALTER TABLE threads ADD COLUMN user_id INTEGER")
+    const threadColumns = this.columns("threads").map((c) => c.name)
+    if (!threadColumns.includes("user_id")) this.db.run("ALTER TABLE threads ADD COLUMN user_id INTEGER")
+    if (!threadColumns.includes("pinned")) this.db.run("ALTER TABLE threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+    if (!threadColumns.includes("archived_at")) this.db.run("ALTER TABLE threads ADD COLUMN archived_at INTEGER")
     const peopleColumns = this.columns("people").map((c) => c.name)
     if (!peopleColumns.includes("spend_daily")) this.db.run("ALTER TABLE people ADD COLUMN spend_daily REAL")
     if (!peopleColumns.includes("spend_monthly")) this.db.run("ALTER TABLE people ADD COLUMN spend_monthly REAL")
@@ -379,14 +386,24 @@ export class Store {
     this.db.query("UPDATE threads SET auto_title = 0 WHERE chat_id = ? AND thread_id = ?").run(key.chatId, key.threadId)
   }
 
-  /** Mark a thread as used, optionally by `userId`, who becomes the person the session talks to. */
+  /** Mark a thread as used, optionally by `userId`, who becomes the person the session talks to. Writing in an archived conversation brings it back. */
   touch(key: ChatKey, userId?: number): void {
     if (userId === undefined)
       this.db.query("UPDATE threads SET updated_at = ? WHERE chat_id = ? AND thread_id = ?").run(Date.now(), key.chatId, key.threadId)
     else
       this.db
-        .query("UPDATE threads SET updated_at = ?, user_id = ? WHERE chat_id = ? AND thread_id = ?")
+        .query("UPDATE threads SET updated_at = ?, user_id = ?, archived_at = NULL WHERE chat_id = ? AND thread_id = ?")
         .run(Date.now(), userId, key.chatId, key.threadId)
+  }
+
+  setPinned(key: ChatKey, pinned: boolean): void {
+    this.db.query("UPDATE threads SET pinned = ? WHERE chat_id = ? AND thread_id = ?").run(pinned ? 1 : 0, key.chatId, key.threadId)
+  }
+
+  setArchived(key: ChatKey, archived: boolean, now = Date.now()): void {
+    // Archiving unpins: pinned means "on top of the list".
+    if (archived) this.db.query("UPDATE threads SET archived_at = ?, pinned = 0 WHERE chat_id = ? AND thread_id = ?").run(now, key.chatId, key.threadId)
+    else this.db.query("UPDATE threads SET archived_at = NULL WHERE chat_id = ? AND thread_id = ?").run(key.chatId, key.threadId)
   }
 
   delete(key: ChatKey): void {
@@ -668,13 +685,18 @@ export class Store {
     return this.db.query<{ user_id: number }, [number]>("SELECT user_id FROM people WHERE telegram_id = ?").get(chatId)?.user_id ?? chatId
   }
 
-  /** A person's private conversations, in Telegram and in the app, most recent first. Groups are left out. */
-  conversationsOf(personId: number, limit = 100): ChatState[] {
+  /**
+   * A person's private conversations, in Telegram and in the app: pinned ones first, then most recent first.
+   * Groups are left out. `archived` picks the archived ones, or `"all"` both.
+   */
+  conversationsOf(personId: number, limit = 100, archived: boolean | "all" = false): ChatState[] {
     const person = this.person(personId)
     const chats = [person?.telegramId ?? null, person?.appChatId ?? null].filter((c): c is number => c !== null)
     if (!chats.length) return []
+    const filter = archived === "all" ? "" : archived ? " AND archived_at IS NOT NULL" : " AND archived_at IS NULL"
+    const order = archived === true ? "archived_at DESC" : "pinned DESC, updated_at DESC"
     return this.db
-      .query<Row, number[]>(`SELECT * FROM threads WHERE chat_id IN (${chats.map(() => "?").join(", ")}) ORDER BY updated_at DESC LIMIT ?`)
+      .query<Row, number[]>(`SELECT * FROM threads WHERE chat_id IN (${chats.map(() => "?").join(", ")})${filter} ORDER BY ${order} LIMIT ?`)
       .all(...chats, limit)
       .map(toState)
   }
@@ -802,7 +824,16 @@ export class Store {
   }
 }
 
-type Row = { chat_id: number; thread_id: number; session_id: string; auto_title: number; updated_at: number; user_id: number | null }
+type Row = {
+  chat_id: number
+  thread_id: number
+  session_id: string
+  auto_title: number
+  updated_at: number
+  user_id: number | null
+  pinned?: number
+  archived_at?: number | null
+}
 
 function toState(row: Row): ChatState {
   return {
@@ -812,6 +843,8 @@ function toState(row: Row): ChatState {
     userId: row.user_id ?? null,
     autoTitle: row.auto_title === 1,
     updatedAt: row.updated_at,
+    pinned: row.pinned === 1,
+    archivedAt: row.archived_at ?? null,
   }
 }
 

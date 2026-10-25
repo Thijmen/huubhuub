@@ -13,6 +13,8 @@ export interface ChatState {
   loaded: boolean
   title: string | null
   telegram: boolean
+  pinned: boolean
+  archived: boolean
   messages: AppMessage[]
   pending: Pending[]
   older: string | null
@@ -29,6 +31,8 @@ export const initialChat: ChatState = {
   loaded: false,
   title: null,
   telegram: false,
+  pinned: false,
+  archived: false,
   messages: [],
   pending: [],
   older: null,
@@ -45,6 +49,7 @@ export type ChatAction =
   | { type: "pending"; pending: Pending }
   | { type: "unsent"; id: string }
   | { type: "question"; question: Question | null }
+  | { type: "organised"; pinned: boolean; archived: boolean }
 
 export function chatReducer(s: ChatState, a: ChatAction): ChatState {
   switch (a.type) {
@@ -57,6 +62,8 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
         loaded: true,
         title: page.conversation.title ?? s.title,
         telegram: page.conversation.telegram,
+        pinned: page.conversation.pinned,
+        archived: page.conversation.archived,
         busy: page.conversation.busy,
         activity: page.conversation.busy ? s.activity : null,
         messages,
@@ -71,6 +78,8 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       return { ...s, pending: s.pending.filter((p) => p.id !== a.id) }
     case "question":
       return { ...s, question: openQuestion(a.question) }
+    case "organised":
+      return { ...s, pinned: a.pinned, archived: a.archived }
     case "event":
       return applyEvent(s, a.event)
   }
