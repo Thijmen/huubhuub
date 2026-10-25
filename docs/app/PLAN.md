@@ -103,10 +103,10 @@ Invite links look like `huubhuub://pair?server=https%3A%2F%2Fhuub.example.com&co
 
 ## Status
 
-Milestone 1 is built, not yet deployed (October 2026):
+Milestones 1 to 4 are built (October 2026). Milestone 1 is released (huubhuub 0.2.0) with a first APK on EAS; 2 to 4 are in review.
 
-- Server: person IDs and Telegram links, invites and device tokens, the app API with live events, Telegram sync and echo, push notifications, `/app`, invites and signed-in phones on the People page. Covered by tests (`src/app-api/*.test.ts`, `src/chats.test.ts`).
-- App: sign-in (scan, paste, or invite link), conversation list, chat with live streaming, markdown, tool activity, stop, question cards, push registration and taps, settings, English and Dutch, "Zondag" theme and icons. Typechecks and bundles for Android; not yet run on a device.
+- Server: person IDs and Telegram links, invites and device tokens, the app API with live events, Telegram sync and echo, push notifications, `/app`, invites and signed-in phones on the People page. Voice notes (AAC decoded with `faad`) and photos, pin/archive/search, and the settings endpoints. Covered by tests (`src/app-api/*.test.ts`, `src/chats.test.ts`, `src/audio.test.ts`).
+- App: sign-in, conversation list with search, pinned and archived conversations, chat with live streaming, markdown, tool activity, stop, question cards, voice notes and photos, push, settings (persona, memory, reminders, spending), English and Dutch, "Zondag" theme and icons. Typechecks and bundles for Android.
 - CI: `.github/workflows/app.yml` (checks on pull requests; APK build or OTA update on main).
 
 ## Milestones
@@ -115,7 +115,7 @@ Milestone 1 is built, not yet deployed (October 2026):
    - Server: person IDs, invites, devices, app API with SSE, Telegram sync and echo, push, `/app` command, invite button on the admin UI's People page.
    - App: pairing (scan or paste), conversation list, chat with live streaming, markdown, tool activity, stop, question cards, push, Dutch/English, brand theme.
    - CI: APK build + OTA.
-2. **Voice and photos**: hold-to-record voice notes (server transcribes; Amazon Transcribe takes OGG/Opus, PCM or FLAC, so either record in a supported format or convert on the server), photos from the camera or gallery.
+2. **Voice and photos**: tap-to-record voice notes (the app records AAC, which Android can't do as OGG/Opus; the server decodes it with `faad` and sends PCM to Amazon Transcribe), photos from the camera or gallery.
 3. **Organise**: pin, archive, search (titles first, then message text).
 4. **Settings**: persona, memory (see, delete), scheduled tasks (see, pause, delete), spending against limits.
 5. **Later**: iOS via TestFlight, store listings, linking Telegram to an app-first person, share sheet.

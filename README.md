@@ -37,7 +37,8 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/reply.ts` | Edits, splitting over 4096 characters, and the typing indicator |
 | `src/chats.ts` | Thread routing, plus text, photo, document, and voice handlers |
 | `src/bot.ts` | Allowlist, commands, and model/agent pickers |
-| `src/transcribe.ts` | Amazon Transcribe client (OGG/Opus) |
+| `src/transcribe.ts` | Amazon Transcribe client (OGG/Opus from Telegram, AAC from the app) |
+| `src/audio.ts` | Decodes the app's AAC recordings to PCM with `faad` |
 | `src/format.ts` | Markdown → Telegram HTML, chunking |
 | `src/store.ts` | SQLite: thread → session map, settings, managed env vars, MCP overrides |
 | `src/settings.ts` | Runtime settings and managed env vars layered over the environment |
@@ -61,7 +62,7 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/spend-limits.ts` | Daily and monthly spending limits per person: warn, refuse new work, stop running work |
 | `src/cost-commands.ts` | `/costs` |
 | `src/admin/web/` | Admin frontend (React, no build step) |
-| `src/app-api/` | The phone app's API: invites and device tokens, conversations, live events, push notifications |
+| `src/app-api/` | The phone app's API: invites and device tokens, conversations, live events, push notifications, search, settings |
 | `src/app-commands.ts` | `/app` |
 | `app/` | The phone app (Expo / React Native) |
 | `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
@@ -221,7 +222,13 @@ The admin UI's **Skills** page loads [agent skills](https://opencode.ai/docs/ski
 
 ## Phone app
 
-The app in `app/` is a chat app for HuubHuub: a list of conversations, each a chat with Huub, with live replies, questions and push notifications. It talks to its own API on `APP_PORT` (default 8081), separate from the admin UI. The plan and the milestones are in [docs/app/PLAN.md](docs/app/PLAN.md).
+The app in `app/` is a chat app for HuubHuub. It talks to its own API on `APP_PORT` (default 8081), separate from the admin UI. The plan and the milestones are in [docs/app/PLAN.md](docs/app/PLAN.md).
+
+- **Conversations**: a list with pinned conversations on top, search through titles and everything that was said, and an archive. Long-press a conversation to pin or archive it.
+- **Chat**: live replies with formatting, short status lines while Huub works, a stop button, and Huub's questions as buttons.
+- **Voice notes and photos**: tap the mic to talk (transcribed with Amazon Transcribe, like Telegram voice notes), or take or pick photos.
+- **Settings**: persona, memory, reminders (pause, run now, delete) and spending.
+- **Push notifications** when a reply is ready or Huub asks something.
 
 Setting it up:
 
@@ -237,6 +244,8 @@ How it behaves:
 - Push notifications go out when a reply finishes or Huub asks a question, unless the conversation is open on the phone. For conversations that also live in Telegram, only prompts sent from the app get a push (Telegram notifies about the rest).
 - Personas, memory and spending limits are per person, the same in Telegram and the app. People who start in the app get a person ID of their own; Telegram users keep their Telegram ID.
 - Scheduled tasks in app-only conversations open a new conversation in the app; notices that would be Telegram messages arrive as push notifications.
+- Photos sent from the app also show up in the Telegram topic. Voice notes arrive as text: the app records AAC, which the server decodes with `faad` (in the Docker image) before sending it to Amazon Transcribe.
+- Writing in an archived conversation brings it back to the list.
 
 ## Admin UI
 
