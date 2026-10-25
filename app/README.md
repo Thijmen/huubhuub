@@ -42,7 +42,21 @@ and the server can't drift apart.
 ## Builds and updates
 
 `.github/workflows/app.yml` builds an APK on EAS when native code changes and publishes an over-the-air update
-otherwise. One-time setup:
+otherwise. Pull requests say which of the two merging will do.
+
+The app keeps itself up to date (`src/lib/updates.tsx`):
+
+- **Over-the-air updates** download at launch and whenever the app comes back to the foreground (at most every
+  20 minutes). A downloaded update starts the next time the app is opened after five minutes away, or on a cold
+  start, so it never reloads while someone is typing. Settings → Check for updates does it right away.
+- **New APKs** can't arrive over the air. CI publishes each one on the rolling GitHub release `app-android`
+  (`huubhuub.apk`, plus `latest.json` with its version code and fingerprint). The app checks `latest.json` and,
+  when there's a newer build with different native code, shows a card with a download button; installing over
+  the old app keeps you signed in. Forks point their builds at their own release with
+  `EXPO_PUBLIC_APP_RELEASES` (an EAS environment variable). Run the workflow by hand to republish the current
+  APK, e.g. after setting this up: EAS's own download links expire after a few weeks.
+
+One-time setup:
 
 1. `bunx eas-cli login`, then `bunx eas-cli init` and put the project ID and owner in `app.config.ts`
    (`OFFICIAL_PROJECT_ID`, `OFFICIAL_OWNER`).

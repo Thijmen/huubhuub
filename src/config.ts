@@ -54,8 +54,8 @@ const schema = z.object({
     .url()
     .transform((u) => u.replace(/\/+$/, ""))
     .optional(),
-  /** Where the invite page sends people who don't have the app yet. */
-  APP_DOWNLOAD_URL: z.string().url().default("https://github.com/Thijmen/huubhuub/releases/latest"),
+  /** Where the invite page sends people who don't have the app yet: the official Android app, which works with any server. */
+  APP_DOWNLOAD_URL: z.string().url().default("https://github.com/Thijmen/huubhuub/releases/download/app-android/huubhuub.apk"),
   QUESTION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(DEFAULT_QUESTION_TIMEOUT),
   SCHEDULE_TIMEZONE: z
     .string()
