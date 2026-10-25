@@ -10,9 +10,20 @@ import { SpendLimitError } from "./spend-limits"
 
 const PAGE_SIZE = 8
 
-export function createBot(config: Config, bridge: Bridge, chats: (bot: Bot) => Chats, extend?: (bot: Bot, chats: Chats) => void): Bot {
+/**
+ * `extend` adds commands for allowlisted users. `open` adds handlers that run before the allowlist, for the few
+ * things someone not on it yet may do (linking their account from the app); they must check everything themselves.
+ */
+export function createBot(
+  config: Config,
+  bridge: Bridge,
+  chats: (bot: Bot) => Chats,
+  extend?: (bot: Bot, chats: Chats) => void,
+  open?: (bot: Bot, chats: Chats) => void,
+): Bot {
   const bot = new Bot(config.TELEGRAM_BOT_TOKEN)
   const chat = chats(bot)
+  open?.(bot, chat)
 
   bot.use(async (ctx, next) => {
     // A draft's stop button carries no sender; drafts only exist in private chats, whose ID is the user's.

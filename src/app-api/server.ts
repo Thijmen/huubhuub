@@ -10,6 +10,7 @@ import { AppEvents, previewOf, toAppMessages } from "./events"
 import { invitePage } from "./invite-page"
 import { ConversationSearch } from "./search"
 import { AppSettings, SettingsError, type SettingsDeps } from "./settings"
+import { LinkError, type TelegramLinks } from "./telegram-link"
 import {
   APP_API_VERSION,
   type AppEvent,
@@ -30,6 +31,7 @@ import {
   type QuestionRequest,
   type SearchResponse,
   type SendRequest,
+  type TelegramLinkResponse,
   type TranscribeRequest,
   type TranscribeResponse,
 } from "./protocol"
@@ -61,6 +63,8 @@ export interface AppDeps {
   serverName: () => string
   /** For the settings screens: persona, memory, scheduled tasks, spending. */
   settings: Omit<SettingsDeps, "store">
+  /** Linking a Telegram account from the app. */
+  telegramLinks: Pick<TelegramLinks, "create">
 }
 
 class HttpError extends Error {
@@ -118,6 +122,7 @@ export function startAppApi(d: AppDeps) {
           }),
       },
       "/v1/me": { GET: authed((_, device) => me(d, device)) },
+      "/v1/telegram/link": { POST: authed((_, device): TelegramLinkResponse => d.telegramLinks.create(device.personId)) },
       "/v1/devices/current": {
         DELETE: authed((_, device) => {
           d.store.deleteDevice(device.id)
@@ -276,7 +281,7 @@ async function run(req: Request, fn: () => Promise<unknown> | unknown): Promise<
     return result instanceof Response ? result : json(result ?? { ok: true })
   } catch (err) {
     const status =
-      err instanceof HttpError || err instanceof SettingsError
+      err instanceof HttpError || err instanceof SettingsError || err instanceof LinkError
         ? err.status
         : err instanceof SpendLimitError
           ? 402
@@ -293,7 +298,7 @@ async function run(req: Request, fn: () => Promise<unknown> | unknown): Promise<
 function me(d: AppDeps, device: AppDevice): Me {
   const person = d.store.person(device.personId)
   return {
-    person: { id: device.personId, name: person?.name ?? null },
+    person: { id: device.personId, name: person?.name ?? null, telegramUsername: person?.telegramId != null ? person.username : null },
     device: { id: device.id, name: device.name },
     serverName: d.serverName(),
     apiVersion: APP_API_VERSION,

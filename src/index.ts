@@ -6,7 +6,8 @@ import { startAdmin } from "./admin/server"
 import { AppAccess } from "./app-api/access"
 import { AppPush } from "./app-api/push"
 import { startAppApi } from "./app-api/server"
-import { appCommands } from "./app-commands"
+import { TelegramLinks } from "./app-api/telegram-link"
+import { appCommands, telegramLinkCommand } from "./app-commands"
 import { AgentSchedules } from "./agent-schedules"
 import { createBot } from "./bot"
 import { Chats } from "./chats"
@@ -70,6 +71,14 @@ const questions = new Questions(
 bridge.subscribeAll((e) => trackForms(questions, e))
 
 const appAccess = new AppAccess(store, () => config.APP_PUBLIC_URL)
+const telegramLinks = new TelegramLinks({
+  store,
+  botUsername: () => (bot.isInited() ? bot.botInfo.username : null),
+  // A person linked from the app may use the bot from now on, like the rest of the allowlist.
+  allow: (id) => {
+    if (!config.ALLOWED_USER_IDS.includes(id)) settings.set("ALLOWED_USER_IDS", [...config.ALLOWED_USER_IDS, id].join(","))
+  },
+})
 const appPush = new AppPush({ store, bridge })
 bridge.subscribeAll((e) => void appPush.onEvent(e).catch((err) => console.error("push failed", err)))
 // Telegram conversations get permission prompts answered by their view; app-only ones have no view.
@@ -139,6 +148,7 @@ const bot = createBot(
     costCommands({ usage, limits, timeZone })(b, c)
     appCommands({ access: appAccess })(b, c)
   },
+  telegramLinkCommand({ links: telegramLinks }),
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
 const schedules = new ScheduleService(store, scheduler, bridge, timeZone)
@@ -190,6 +200,7 @@ const appApi =
         transcriber,
         serverName: () => (bot.isInited() ? (bot.botInfo.first_name ?? "HuubHuub") : "HuubHuub"),
         settings: { personas, limits, scheduler, schedules, timeZone },
+        telegramLinks,
       })
     : undefined
 if (appApi) console.log(`App API on port ${appApi.port}${config.APP_PUBLIC_URL ? `, public at ${config.APP_PUBLIC_URL}` : " (set APP_PUBLIC_URL to invite people)"}`)
