@@ -5,15 +5,26 @@ repo root); the plan and milestones are in [../docs/app/PLAN.md](../docs/app/PLA
 
 ```sh
 bun install
-bun run start       # Expo dev server; scan the QR code with Expo Go
+bunx expo run:android   # builds a development version, installs it on the phone or emulator and starts Metro
 bun run typecheck
 bun run test
 ```
 
+Expo Go can't run the app: it ships other versions of some native modules (notifications). The development
+build needs the Android SDK and JDK 17 (`JAVA_HOME`); it generates `android/`, which isn't committed. After the
+first build, `bun run start` is enough until the native modules change.
+
 To sign in during development, create an invite (`/app` in Telegram, or the admin UI's People page) and open
 the link on the phone, or paste it on the sign-in screen. The bot's `APP_PUBLIC_URL` must be reachable from
-the phone. In Expo Go a local address like `http://<your-ip>:8081` works; APK builds need HTTPS, because
-Android blocks plain HTTP in release builds.
+the phone. A development build accepts a local address like `http://<your-ip>:8081`; APK builds need HTTPS,
+because Android blocks plain HTTP in release builds.
+
+### Without a bot
+
+`bun scripts/app-demo.ts` (from the repo root) serves the app API with made-up Dutch conversations: pinned ones,
+a question waiting for an answer, tool activity, a reminder, and a reply that streams in when you send
+something. No Telegram or OpenCode needed. It prints an invite; on the Android emulator, which reaches your
+computer at `10.0.2.2` (the default host), sign in with `adb shell am start -d '<app link>'`.
 
 ## Layout
 
