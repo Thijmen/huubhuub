@@ -1,5 +1,13 @@
 # huubhuub
 
+## 0.4.0
+
+### Minor Changes
+
+- [#40](https://github.com/Thijmen/huubhuub/pull/40) [`b9e9535`](https://github.com/Thijmen/huubhuub/commit/b9e9535c957ecb26f327ae60d11008480712e97b) Thanks [@Thijmen](https://github.com/Thijmen)! - The phone app now looks like its design. Conversations get an emoji tile and say who spoke last, or that Huub is typing or waiting for an answer. In a conversation, Huub's searches and other steps show as small pills that stay after the reply. Reminders it sets and things it remembers get their own card. The composer, voice recorder, new-conversation screen (with starter ideas), question cards, sign-in and settings screens all got their designed look. Also fixes conversation and settings rows that lost their layout, and a crash when a phone is signed out while a conversation is open.
+
+- [#39](https://github.com/Thijmen/huubhuub/pull/39) [`2919dfe`](https://github.com/Thijmen/huubhuub/commit/2919dfe4da042be2b0751e059cc86d3095db0ac4) Thanks [@Thijmen](https://github.com/Thijmen)! - Link Telegram from the phone app: Settings → Link Telegram opens the bot, and pressing Start makes your app and Telegram one person, with shared conversations, memories and settings. On the admin UI's People page, Link with… does the same for anyone who shows up twice.
+
 ## 0.3.0
 
 ### Minor Changes
