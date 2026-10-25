@@ -82,9 +82,14 @@ export function useSession(): SessionValue {
   return value
 }
 
-/** The API for screens that only render when signed in. */
+/**
+ * The API for screens that only render when signed in. When the phone gets signed out, such a screen may
+ * render once more before it closes; it keeps the last API (whose calls now fail) instead of crashing.
+ */
 export function useApi(): Api {
   const { api } = useSession()
-  if (!api) throw new Error("Not signed in")
-  return api
+  const last = useRef(api)
+  if (api) last.current = api
+  if (!last.current) throw new Error("Not signed in")
+  return last.current
 }

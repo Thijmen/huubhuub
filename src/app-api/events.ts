@@ -1,13 +1,13 @@
 import { describeTool } from "../activity"
 import type { Host, SessionEvent } from "../opencode"
-import type { AppEvent, AppMessage } from "./protocol"
+import type { AppEvent, AppMessage, AppTool } from "./protocol"
 
 type Message = Awaited<ReturnType<Host["message"]["list"]>>["data"][number]
 
 const MAX_IMAGE_BYTES = 1_500_000
 const PREVIEW_CHARS = 160
 
-/** OpenCode messages, oldest first, as the app shows them: what was said, without tool calls or bookkeeping. */
+/** OpenCode messages, oldest first, as the app shows them: what was said and which tools were used, without bookkeeping. */
 export function toAppMessages(messages: readonly Message[]): AppMessage[] {
   const out: AppMessage[] = []
   for (const m of messages) {
@@ -23,10 +23,17 @@ export function toAppMessages(messages: readonly Message[]): AppMessage[] {
       })
     } else if (m.type === "assistant") {
       const parts = m.content.flatMap((c) => (c.type === "text" && c.text.trim() ? [c.text] : []))
+      const tools = m.content.flatMap((c): AppTool[] => {
+        // Questions show up as their own card.
+        if (c.type !== "tool" || c.name === "question") return []
+        const status = c.state.status === "completed" ? "ok" : c.state.status === "error" ? "error" : "running"
+        const input = c.state.input as Record<string, unknown> | undefined
+        const note = status === "ok" ? noteOf(c.name, input) : undefined
+        return [{ id: c.id, ...describeTool(c.name, input), status, ...(note ? { note } : {}) }]
+      })
       const error = m.error ? errorText(m.error) : null
-      // Steps that only called tools have nothing to show once they're done.
-      if (!parts.length && !error && m.time.completed) continue
-      out.push({ id: m.id, role: "assistant", createdAt: m.time.created, parts, done: Boolean(m.time.completed), error })
+      if (!parts.length && !tools.length && !error && m.time.completed) continue
+      out.push({ id: m.id, role: "assistant", createdAt: m.time.created, parts, ...(tools.length ? { tools } : {}), done: Boolean(m.time.completed), error })
     }
   }
   return out
@@ -34,11 +41,15 @@ export function toAppMessages(messages: readonly Message[]): AppMessage[] {
 
 /** The last thing said, as one line of plain text, for the conversation list and notifications. */
 export function previewOf(messages: readonly AppMessage[], max = PREVIEW_CHARS): string | null {
+  return lastSaid(messages, max)?.text ?? null
+}
+
+/** The last thing said and who said it. */
+export function lastSaid(messages: readonly AppMessage[], max = PREVIEW_CHARS): { text: string; from: "user" | "assistant" } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!
-    const text = m.role === "user" ? m.text : m.parts.join(" ")
-    const plain = plainText(text)
-    if (plain) return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain
+    const plain = plainText(m.role === "user" ? m.text : m.parts.join(" "))
+    if (plain) return { text: plain.length > max ? `${plain.slice(0, max - 1)}…` : plain, from: m.role }
   }
   return null
 }
@@ -50,7 +61,7 @@ export function plainText(markdown: string): string {
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*[-*+]\s+(\[[ xX]\]\s+)?/gm, "")
     .replace(/^\s*>\s?/gm, "")
     // Underscores only mark emphasis around words; inside them (snake_case, file names) they stay.
     .replace(/(^|[^\w])_{1,2}([^_\n]+?)_{1,2}(?=[^\w]|$)/g, "$1$2")
@@ -109,6 +120,21 @@ export class AppEvents {
     }
     return undefined
   }
+}
+
+/** Reminders Huub set and things it saved to memory get a card of their own in the app. */
+function noteOf(tool: string, input: Record<string, unknown> | undefined): AppTool["note"] {
+  const str = (k: string) => (typeof input?.[k] === "string" ? (input[k] as string).trim().replace(/\s+/g, " ") : "")
+  const short = (s: string) => (s.length > 80 ? `${s.slice(0, 79)}…` : s)
+  if (tool === "schedule_create") {
+    const text = str("name") || str("prompt") || str("command")
+    return text ? { type: "reminder", text: short(text) } : undefined
+  }
+  if (tool === "memory_save" || tool === "memory_update") {
+    const text = str("text")
+    return text ? { type: "memory", text: short(text) } : undefined
+  }
+  return undefined
 }
 
 function errorText(err: unknown): string {

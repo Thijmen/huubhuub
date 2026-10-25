@@ -20,12 +20,20 @@ export const light = {
   huubBubble: "#FFFFFF",
   huubBubbleBorder: "#F2E6D8",
   codeBg: "#1D2233",
+  codeHeader: "#283049",
   codeText: "#F5EDE4",
+  codeDim: "#9AA3BD",
   inlineCodeBg: "#EAEFFB",
   inlineCodeText: "#2D4BA0",
   questionBorder: "#FFCDA8",
   success: "#2F8F5B",
   danger: "#C93A2B",
+  recording: "#E5484D",
+  /** Backgrounds for conversation tiles. */
+  tints: ["#FFE6D3", "#E5EBFA", "#E2F2E6", "#FFF0C7", "#F6E3F0"] as readonly string[],
+  /** Cards and Huub's bubbles. */
+  shadow: "0px 1px 2px rgba(60, 35, 10, 0.05), 0px 6px 16px -6px rgba(60, 35, 10, 0.10)",
+  fabShadow: "0px 12px 24px -8px rgba(232, 93, 4, 0.6)",
 }
 
 export type Palette = typeof light
@@ -49,15 +57,21 @@ export const dark: Palette = {
   huubBubble: "#221D18",
   huubBubbleBorder: "#30281F",
   codeBg: "#0E0B09",
+  codeHeader: "#1D1814",
   codeText: "#F5EDE4",
+  codeDim: "#8F877E",
   inlineCodeBg: "#262C42",
   inlineCodeText: "#B5C4F7",
   questionBorder: "#6A3A18",
   success: "#5CC98A",
   danger: "#FF6B5E",
+  recording: "#FF6369",
+  tints: ["#3A2416", "#222A40", "#1D3024", "#3A3118", "#3A2234"],
+  shadow: "0px 1px 2px rgba(0, 0, 0, 0.3)",
+  fabShadow: "0px 12px 24px -8px rgba(255, 122, 46, 0.45)",
 }
 
-export const radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28, pill: 999, bubble: 20, bubbleTail: 6, fab: 22 } as const
+export const radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28, pill: 999, bubble: 20, bubbleTail: 6, fab: 22, card: 22, tile: 15 } as const
 export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, huge: 48 } as const
 
 export const font = {

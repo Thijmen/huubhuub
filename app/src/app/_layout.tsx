@@ -44,10 +44,20 @@ function Root() {
           contentStyle: { backgroundColor: c.bg },
         }}
       >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="pair" options={{ headerShown: false }} />
-        <Stack.Screen name="c/[id]" options={{ title: "" }} />
-        <Stack.Screen name="settings/index" />
+        {/* A phone that gets signed out (or never was) only has the sign-in screen. */}
+        <Stack.Protected guard={Boolean(session)}>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="c/[id]" options={{ title: "" }} />
+          <Stack.Screen name="archived" />
+          <Stack.Screen name="settings/index" />
+          <Stack.Screen name="settings/persona" />
+          <Stack.Screen name="settings/memory" />
+          <Stack.Screen name="settings/reminders" />
+          <Stack.Screen name="settings/spending" />
+        </Stack.Protected>
+        <Stack.Protected guard={!session}>
+          <Stack.Screen name="pair" options={{ headerShown: false }} />
+        </Stack.Protected>
       </Stack>
     </ThemeProvider>
   )

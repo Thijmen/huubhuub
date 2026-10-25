@@ -30,8 +30,8 @@ export default function ArchivedScreen() {
         data={list ?? []}
         keyExtractor={(item) => item.id}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{ padding: space.lg, gap: space.sm, flexGrow: 1 }}
-        ListHeaderComponent={error ? <Text selectable style={{ color: c.danger }}>{error}</Text> : undefined}
+        contentContainerStyle={{ paddingVertical: space.sm, flexGrow: 1 }}
+        ListHeaderComponent={error ? <Text selectable style={{ color: c.danger, paddingHorizontal: 18 }}>{error}</Text> : undefined}
         ListEmptyComponent={list ? <Text style={{ color: c.textMuted, textAlign: "center", padding: space.xxl, fontSize: font.size.body, lineHeight: font.lineHeight.body }}>{t("archivedEmpty")}</Text> : undefined}
         renderItem={({ item }) => <ConversationRow item={item} onLongPress={() => showConversationActions(api, item, () => load())} />}
       />

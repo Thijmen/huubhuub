@@ -6,7 +6,7 @@ import { parseAction, type QuestionAction as ServerQuestionAction, type Question
 import { SpendLimitError } from "../spend-limits"
 import { isAppChat, type AppDevice, type ChatState, type Store } from "../store"
 import { AccessError, type AppAccess } from "./access"
-import { AppEvents, previewOf, toAppMessages } from "./events"
+import { AppEvents, lastSaid, toAppMessages } from "./events"
 import { invitePage } from "./invite-page"
 import { ConversationSearch } from "./search"
 import { AppSettings, SettingsError, type SettingsDeps } from "./settings"
@@ -330,16 +330,19 @@ async function summary(d: AppDeps, t: ChatState, active: Set<string>, loaded?: R
     d.bridge.getSession(t.sessionID).catch(() => undefined),
     loaded ??
       d.bridge.host.message
-        .list({ sessionID: t.sessionID, order: "desc", limit: 6 })
+        .list({ sessionID: t.sessionID, order: "desc", limit: 12 })
         .then((p) => toAppMessages([...p.data].reverse()))
         .catch(() => []),
   ])
+  const said = lastSaid(messages)
   return {
     id: t.sessionID,
     title: session?.title ?? null,
     updatedAt: t.updatedAt,
     busy: active.has(t.sessionID),
-    preview: previewOf(messages),
+    preview: said?.text ?? null,
+    from: said?.from ?? null,
+    asking: d.questions.pending(t.sessionID) !== undefined,
     telegram: !isAppChat(t.chatId),
     pinned: t.pinned,
     archived: t.archivedAt !== null,

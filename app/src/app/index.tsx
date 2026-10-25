@@ -1,12 +1,13 @@
-import { Link, Redirect, router, Stack, useFocusEffect } from "expo-router"
+import { Redirect, router, Stack, useFocusEffect } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg"
 import type { ConversationSummary, SearchResult } from "@server/protocol"
-import { HuubAvatar, Icon } from "@/components/art"
+import { AvatarTile, Halo, Icon } from "@/components/art"
 import { ConversationRow } from "@/components/conversation-row"
 import { showConversationActions } from "@/lib/conversation-actions"
-import { t } from "@/lib/i18n"
+import { t, tagline } from "@/lib/i18n"
 import { registerPush } from "@/lib/push"
 import { useSession } from "@/lib/session"
 import { font, radius, space, useTheme } from "@/theme"
@@ -19,7 +20,11 @@ export default function ConversationsScreen() {
   return <Conversations />
 }
 
-type Row = { kind: "header"; label: string } | { kind: "conversation"; item: ConversationSummary } | { kind: "result"; result: SearchResult }
+type Row =
+  | { kind: "section"; label: string; pinned?: boolean }
+  | { kind: "card"; items: ConversationSummary[] }
+  | { kind: "conversation"; item: ConversationSummary }
+  | { kind: "result"; result: SearchResult }
 
 function Conversations() {
   const { c } = useTheme()
@@ -32,6 +37,7 @@ function Conversations() {
   const [results, setResults] = useState<SearchResult[] | null>(null)
   const [searching, setSearching] = useState(false)
   const pushed = useRef(false)
+  const firstName = session?.me.person.name?.split(" ")[0] ?? null
 
   const load = useCallback(async () => {
     try {
@@ -91,131 +97,156 @@ function Conversations() {
     if (results) return results.map((result) => ({ kind: "result", result }))
     const all = list ?? []
     const pinned = all.filter((x) => x.pinned)
-    const rest = all.filter((x) => !x.pinned)
-    const items = (xs: ConversationSummary[]) => xs.map((item): Row => ({ kind: "conversation", item }))
-    if (!pinned.length) return items(rest)
-    return [{ kind: "header", label: t("pinned") }, ...items(pinned), ...(rest.length ? [{ kind: "header" as const, label: t("recent") }, ...items(rest)] : [])]
+    const rest = all.filter((x) => !x.pinned).map((item): Row => ({ kind: "conversation", item }))
+    if (!pinned.length) return rest
+    return [{ kind: "section", label: t("pinned"), pinned: true }, { kind: "card", items: pinned }, ...(rest.length ? [{ kind: "section" as const, label: t("recent") }, ...rest] : [])]
   }, [list, results])
 
+  const actions = (item: ConversationSummary) => () => showConversationActions(api!, item, changed)
+
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: t("conversations"),
-          headerLeft: () => (
-            <View style={{ marginRight: space.sm }}>
-              <HuubAvatar size={30} />
-            </View>
-          ),
-          headerRight: () => (
-            <Link href="/settings" asChild>
-              <Pressable hitSlop={10} accessibilityLabel={t("settings")}>
-                <Icon name="settings" color={c.text} />
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={{ paddingTop: insets.top + space.sm, paddingLeft: 18, paddingRight: space.md, paddingBottom: space.md, flexDirection: "row", alignItems: "center", gap: space.md }}>
+        <AvatarTile />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.title, lineHeight: font.lineHeight.title }}>{t("appName")}</Text>
+          <Text numberOfLines={1} style={{ color: c.textMuted, fontSize: 13 }}>
+            {tagline(firstName)}
+          </Text>
+        </View>
+        <Pressable onPress={() => router.push("/settings")} hitSlop={6} accessibilityLabel={t("settings")} style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? c.surfaceAlt : "transparent" })}>
+          <Icon name="settings" size={22} color={c.text} />
+        </Pressable>
+      </View>
+
+      <View style={{ marginHorizontal: space.lg, marginBottom: 6, height: 46, borderRadius: 16, borderCurve: "continuous", backgroundColor: c.surfaceAlt, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14 }}>
+        <Icon name="search" size={20} color={c.textMuted} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t("searchPlaceholder")}
+          placeholderTextColor={c.textMuted}
+          returnKeyType="search"
+          autoCorrect={false}
+          style={{ flex: 1, color: c.text, fontSize: font.size.label, paddingVertical: 0 }}
+        />
+        {searching ? (
+          <ActivityIndicator size="small" color={c.primary} />
+        ) : (
+          !!query && (
+            <Pressable onPress={() => setQuery("")} hitSlop={10} accessibilityLabel={t("cancel")}>
+              <Icon name="close" size={16} color={c.textMuted} />
+            </Pressable>
+          )
+        )}
+      </View>
+
       <FlatList
         data={rows}
-        keyExtractor={(row, i) => (row.kind === "header" ? `h-${row.label}` : row.kind === "conversation" ? row.item.id : `r-${row.result.conversation.id}-${i}`)}
-        contentInsetAdjustmentBehavior="automatic"
+        keyExtractor={(row, i) => (row.kind === "section" ? `s-${row.label}` : row.kind === "card" ? "card" : row.kind === "conversation" ? row.item.id : `r-${row.result.conversation.id}-${i}`)}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={{ padding: space.lg, gap: space.sm, paddingBottom: insets.bottom + 110, flexGrow: 1 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={c.primary} colors={[c.primary]} />}
+        contentContainerStyle={{ paddingTop: space.xs, paddingBottom: insets.bottom + 120, flexGrow: 1 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={c.primary} colors={[c.primary]} progressBackgroundColor={c.surface} />}
         ListHeaderComponent={
-          <View style={{ gap: space.sm, paddingBottom: space.xs }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, backgroundColor: c.surfaceAlt, borderRadius: radius.md, borderCurve: "continuous", paddingHorizontal: space.md }}>
-              <Icon name="search" size={18} color={c.textMuted} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder={t("searchPlaceholder")}
-                placeholderTextColor={c.textMuted}
-                returnKeyType="search"
-                autoCorrect={false}
-                style={{ flex: 1, color: c.text, fontSize: font.size.body, paddingVertical: 10 }}
-              />
-              {searching ? (
-                <ActivityIndicator size="small" color={c.primary} />
-              ) : (
-                !!query && (
-                  <Pressable onPress={() => setQuery("")} hitSlop={8} accessibilityLabel={t("cancel")}>
-                    <Icon name="close" size={16} color={c.textMuted} />
-                  </Pressable>
-                )
-              )}
-            </View>
-            {!!error && (
-              <Text selectable style={{ color: c.danger, fontSize: font.size.small }}>
-                {error}
-              </Text>
-            )}
-          </View>
+          error ? (
+            <Text selectable style={{ color: c.danger, fontSize: font.size.small, paddingHorizontal: 22, paddingVertical: space.sm }}>
+              {error}
+            </Text>
+          ) : undefined
         }
         ListEmptyComponent={
           results ? (
-            <Text style={{ color: c.textMuted, textAlign: "center", padding: space.xxl }}>{t("noResults", { q: query.trim() })}</Text>
+            <Text style={{ color: c.textMuted, textAlign: "center", padding: space.xxl, fontSize: font.size.label }}>{t("noResults", { q: query.trim() })}</Text>
           ) : list ? (
-            <EmptyList name={session?.me.person.name ?? null} />
+            <EmptyList name={firstName} />
           ) : undefined
         }
         ListFooterComponent={
-          !results && list ? (
-            <Link href="/archived" asChild>
-              <Pressable style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm, padding: space.lg }}>
-                <Icon name="archive" size={18} color={c.textMuted} />
-                <Text style={{ color: c.textMuted, fontSize: font.size.label, fontWeight: "600" }}>{t("archivedLink")}</Text>
-              </Pressable>
-            </Link>
+          !results && list?.length ? (
+            <Pressable onPress={() => router.push("/archived")} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm, padding: space.xl }}>
+              <Icon name="archive" size={18} color={c.textMuted} />
+              <Text style={{ color: c.textMuted, fontSize: font.size.small, fontWeight: "600" }}>{t("archivedLink")}</Text>
+            </Pressable>
           ) : undefined
         }
         renderItem={({ item: row }) =>
-          row.kind === "header" ? (
-            <Text style={{ color: c.textMuted, fontSize: font.size.caption, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", paddingTop: space.sm }}>{row.label}</Text>
+          row.kind === "section" ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 22, paddingTop: 14, paddingBottom: 6 }}>
+              {row.pinned && <Icon name="pin" size={13} color={c.textMuted} />}
+              <Text style={{ color: c.textMuted, fontSize: 11.5, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" }}>{row.label}</Text>
+            </View>
+          ) : row.kind === "card" ? (
+            <View style={{ marginHorizontal: space.md, backgroundColor: c.surface, borderRadius: radius.card, borderCurve: "continuous", borderWidth: 1, borderColor: c.border, boxShadow: c.shadow, overflow: "hidden" }}>
+              {row.items.map((item, i) => (
+                <ConversationRow key={item.id} item={item} grouped first={i === 0} onLongPress={actions(item)} />
+              ))}
+            </View>
           ) : row.kind === "conversation" ? (
-            <ConversationRow item={row.item} onLongPress={() => showConversationActions(api!, row.item, changed)} />
+            <ConversationRow item={row.item} onLongPress={actions(row.item)} />
           ) : (
             <ConversationRow item={row.result.conversation} snippet={row.result.snippet} />
           )
         }
       />
+
+      <Fade height={90} bottom={0} />
       <Pressable
         onPress={() => router.push({ pathname: "/c/[id]", params: { id: "new" } })}
         accessibilityLabel={t("newConversation")}
         style={({ pressed }) => ({
           position: "absolute",
-          right: space.xl,
-          bottom: insets.bottom + space.xl,
+          right: space.lg,
+          bottom: insets.bottom + space.lg,
+          height: 58,
           flexDirection: "row",
           alignItems: "center",
-          gap: space.sm,
+          gap: 10,
+          paddingLeft: 18,
+          paddingRight: 22,
           backgroundColor: c.primary,
           borderRadius: radius.fab,
           borderCurve: "continuous",
-          paddingHorizontal: space.xl,
-          paddingVertical: space.lg,
-          boxShadow: "0 6px 18px rgba(232, 93, 4, 0.35)",
+          boxShadow: c.fabShadow,
           transform: [{ scale: pressed ? 0.97 : 1 }],
         })}
       >
-        <Icon name="new" color={c.onPrimary} />
-        <Text style={{ color: c.onPrimary, fontFamily: font.rounded, fontSize: font.size.label }}>{t("newConversation")}</Text>
+        <Icon name="new" size={22} color={c.onPrimary} />
+        <Text style={{ color: c.onPrimary, fontFamily: font.rounded, fontSize: font.size.body }}>{t("newConversation")}</Text>
       </Pressable>
-    </>
+    </View>
+  )
+}
+
+/** The list fades into the background behind the button. */
+function Fade({ height, bottom }: { height: number; bottom: number }) {
+  const { c } = useTheme()
+  const insets = useSafeAreaInsets()
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom, height: height + insets.bottom }}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <LinearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={c.bg} stopOpacity={0} />
+            <Stop offset="0.7" stopColor={c.bg} stopOpacity={1} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#fade)" />
+      </Svg>
+    </View>
   )
 }
 
 function EmptyList({ name }: { name: string | null }) {
   const { c } = useTheme()
   return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xxl }}>
-      <HuubAvatar size={88} />
-      <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.title, textAlign: "center" }}>
-        {name ? t("greeting", { name: name.split(" ")[0]! }) : t("emptyListTitle")}
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xxl, paddingBottom: space.huge * 2 }}>
+      <Halo size={104} />
+      <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: 23, lineHeight: 29, textAlign: "center", marginTop: space.sm }}>
+        {name ? t("greeting", { name }) : t("emptyListTitle")}
       </Text>
-      <Text style={{ color: c.textMuted, fontSize: font.size.body, lineHeight: font.lineHeight.body, textAlign: "center" }}>{t("emptyListBody")}</Text>
+      <Text style={{ color: c.textMuted, fontSize: 14.5, lineHeight: 21, textAlign: "center", maxWidth: 260 }}>{t("emptyListBody")}</Text>
     </View>
   )
 }
