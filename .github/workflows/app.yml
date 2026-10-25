@@ -44,11 +44,13 @@ jobs:
         # Installed apps only get over-the-air updates made for their own native code. A changed fingerprint
         # means merging builds a new APK, and phones need to install it before they get anything newer.
         run: |
-          fingerprint() { bunx expo-updates fingerprint:generate --platform android | jq -r .hash; }
+          set -o pipefail
+          fingerprint() { bunx expo-updates fingerprint:generate --platform android | jq -re .hash; }
           head=$(fingerprint)
           git fetch --quiet --depth=1 origin "$BASE"
           git worktree add --quiet "$RUNNER_TEMP/base" "$BASE"
           base=$(cd "$RUNNER_TEMP/base/app" && bun install --frozen-lockfile >/dev/null && fingerprint)
+          echo "Fingerprint: base $base, this pull request $head"
           if [ "$head" = "$base" ]; then
             echo "Native code unchanged (\`$head\`): merging ships as an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
           else
