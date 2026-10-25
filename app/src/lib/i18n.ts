@@ -5,8 +5,12 @@ const en = {
   appName: "HuubHuub",
   // Pairing
   pairTitle: "Sign in",
-  pairIntro: "Scan the QR code from your invite, or open the invite link on this phone.",
-  pairScanHint: "Point the camera at the QR code",
+  pairHello: "Hi, I'm Huub!",
+  pairIntro: "Scan the QR code from your HuubHuub server to connect this phone.",
+  pairHelp: "The code is on your server's invite page. Or ask whoever set up Huub for you.",
+  pairSafe: "Your conversations stay on your own server.",
+  pairScanInstead: "Scan a QR code instead",
+  pairScanHint: "Point your camera at the code",
   pairCameraAsk: "To scan the QR code, HuubHuub needs the camera.",
   pairCameraAllow: "Allow camera",
   pairPasteInstead: "Paste the link instead",
@@ -22,7 +26,14 @@ const en = {
   greeting: "Hi {name}!",
   emptyListBody: "Start a conversation with Huub. Ask anything, in your own words.",
   untitled: "New conversation",
-  typing: "Huub is typing…",
+  typing: "Huub is typing",
+  asking: "Huub is waiting for your answer",
+  previewYou: "You: ",
+  previewHuub: "Huub: ",
+  tagline_night: "Still up? Me too.",
+  tagline_morning: "Good morning, {name}!",
+  tagline_day: "What shall we talk about?",
+  tagline_evening: "Anything to sort out for tomorrow?",
   onTelegram: "Also on Telegram",
   pinned: "Pinned",
   recent: "Recent",
@@ -38,7 +49,32 @@ const en = {
   // Chat
   composerPlaceholder: "Message Huub…",
   newChatTitle: "What can I help with?",
-  newChatBody: "Ask a question, plan something, or just think out loud.",
+  newChatBody: "Ask away. I can look things up, remember things and remind you of them.",
+  newChatSub: "Huub comes up with a title by itself",
+  sugg1Title: "What's for dinner?",
+  sugg1Hint: "With what's still in the house",
+  sugg1Text: "What shall we have for dinner tonight? We still have ",
+  sugg2Title: "Remind me of something",
+  sugg2Hint: "“Tomorrow at 9…”",
+  sugg2Text: "Remind me tomorrow at 9 to ",
+  sugg3Title: "Plan a day out",
+  sugg3Hint: "Route, times, tips",
+  sugg3Text: "Plan a day out to ",
+  sugg4Title: "Help me write a message",
+  sugg4Hint: "Polite or casual",
+  sugg4Text: "Help me write a message to ",
+  headerThinking: "Huub is thinking…",
+  headerDoing: "Huub is {what}…",
+  headerAsking: "Huub has a question",
+  headerIdle: "Huub",
+  headerTelegram: "Huub · also in Telegram",
+  dayToday: "Today",
+  dayYesterday: "Yesterday",
+  copy: "Copy",
+  copied: "Copied",
+  reminderSet: "Reminder set",
+  memorySaved: "Remembered",
+  toolsDone: "{n} steps",
   thinking: "Thinking",
   stopped: "Stopped",
   loadOlder: "Load older messages",
@@ -50,10 +86,14 @@ const en = {
   photoChoose: "Choose a photo",
   photoDenied: "HuubHuub needs the camera for that. Allow it in the phone's settings.",
   recording: "Recording…",
+  recordHint: "Tap ↑ to send, or ✕ to cancel",
   transcribing: "Turning your voice into text…",
   micDenied: "HuubHuub needs the microphone for voice notes. Allow it in the phone's settings.",
   noSpeech: "I couldn't make out any speech. Try again?",
   questionHint: "Or type your own answer below.",
+  questionLabel: "Huub asks",
+  questionOr: "or",
+  questionOwn: "Type your own answer…",
   questionSubmit: "Done",
   questionSkip: "Skip",
   questionCount: "{index} of {total}",
@@ -69,11 +109,26 @@ const en = {
   tool_plan: "Planning",
   tool_skill: "Loading a skill",
   tool_other: "Working on it",
+  done_web: "Read {detail}",
+  done_search: "Searched the web",
+  done_shell: "Ran a command",
+  done_read: "Read {detail}",
+  done_write: "Wrote {detail}",
+  done_edit: "Edited {detail}",
+  done_files: "Looked through the files",
+  done_helper: "Asked a helper",
+  done_plan: "Made a plan",
+  done_skill: "Loaded a skill",
+  done_other: "Used a tool",
   // Settings
   settings: "Settings",
   you: "You",
   persona: "Persona",
   personaHint: "Who Huub is for you. Applies from your next message.",
+  personaShort: "Who Huub is for you",
+  memoryShort: "What Huub remembers about you",
+  remindersShort: "What Huub does on a schedule",
+  spendingShort: "Today and this month",
   personaDefault: "Default",
   personaNone: "No persona",
   memory: "Memory",
@@ -144,8 +199,12 @@ export type Key = keyof typeof en
 const nl: Record<Key, string> = {
   appName: "HuubHuub",
   pairTitle: "Inloggen",
-  pairIntro: "Scan de QR-code van je uitnodiging, of open de uitnodigingslink op deze telefoon.",
-  pairScanHint: "Richt de camera op de QR-code",
+  pairHello: "Hoi, ik ben Huub!",
+  pairIntro: "Scan de QR-code van je HuubHuub-server om deze telefoon te koppelen.",
+  pairHelp: "De code staat op de koppelpagina van je server. Vraag het anders even aan wie Huub voor je heeft opgezet.",
+  pairSafe: "Je gesprekken blijven op je eigen server.",
+  pairScanInstead: "Toch een QR-code scannen",
+  pairScanHint: "Richt je camera op de code",
   pairCameraAsk: "Om de QR-code te scannen heeft HuubHuub de camera nodig.",
   pairCameraAllow: "Camera toestaan",
   pairPasteInstead: "Liever een link plakken",
@@ -160,7 +219,14 @@ const nl: Record<Key, string> = {
   greeting: "Hoi {name}!",
   emptyListBody: "Begin een gesprek met Huub. Vraag wat je wilt, gewoon in je eigen woorden.",
   untitled: "Nieuw gesprek",
-  typing: "Huub is aan het typen…",
+  typing: "Huub is aan het typen",
+  asking: "Huub wacht op je antwoord",
+  previewYou: "Jij: ",
+  previewHuub: "Huub: ",
+  tagline_night: "Nog wakker? Ik ook.",
+  tagline_morning: "Goedemorgen, {name}!",
+  tagline_day: "Waar gaan we het over hebben?",
+  tagline_evening: "Nog iets regelen voor morgen?",
   onTelegram: "Ook in Telegram",
   pinned: "Vastgezet",
   recent: "Recent",
@@ -174,8 +240,33 @@ const nl: Record<Key, string> = {
   searchPlaceholder: "Zoek in gesprekken",
   noResults: "Niks gevonden voor “{q}”.",
   composerPlaceholder: "Bericht aan Huub…",
-  newChatTitle: "Waar kan ik je mee helpen?",
-  newChatBody: "Stel een vraag, plan iets, of denk gewoon hardop.",
+  newChatTitle: "Waar kan ik mee helpen?",
+  newChatBody: "Vraag maar raak. Ik kan dingen opzoeken, onthouden en je ergens aan herinneren.",
+  newChatSub: "Huub bedenkt straks zelf een titel",
+  sugg1Title: "Wat eten we vanavond?",
+  sugg1Hint: "Met wat er nog in huis is",
+  sugg1Text: "Wat zullen we vanavond eten? We hebben nog ",
+  sugg2Title: "Herinner me ergens aan",
+  sugg2Hint: "“Morgen om 9 uur…”",
+  sugg2Text: "Herinner me morgen om 9 uur aan ",
+  sugg3Title: "Plan een dagje uit",
+  sugg3Hint: "Route, tijden, tips",
+  sugg3Text: "Plan een dagje uit naar ",
+  sugg4Title: "Help me met een berichtje",
+  sugg4Hint: "Netjes of juist luchtig",
+  sugg4Text: "Help me met een berichtje aan ",
+  headerThinking: "Huub denkt na…",
+  headerDoing: "Huub {what}…",
+  headerAsking: "Huub heeft een vraag",
+  headerIdle: "Huub",
+  headerTelegram: "Huub · ook in Telegram",
+  dayToday: "Vandaag",
+  dayYesterday: "Gisteren",
+  copy: "Kopieer",
+  copied: "Gekopieerd",
+  reminderSet: "Herinnering ingesteld",
+  memorySaved: "Onthouden",
+  toolsDone: "{n} stappen",
   thinking: "Even nadenken",
   stopped: "Gestopt",
   loadOlder: "Oudere berichten laden",
@@ -186,10 +277,14 @@ const nl: Record<Key, string> = {
   photoChoose: "Foto kiezen",
   photoDenied: "Daarvoor heeft HuubHuub de camera nodig. Sta het toe in de instellingen van je telefoon.",
   recording: "Opnemen…",
+  recordHint: "Tik op ↑ om te versturen, of op ✕ om te annuleren",
   transcribing: "Je stem wordt tekst…",
   micDenied: "Voor spraakberichten heeft HuubHuub de microfoon nodig. Sta het toe in de instellingen van je telefoon.",
   noSpeech: "Ik kon er geen woorden uit halen. Nog een keer?",
   questionHint: "Of typ hieronder je eigen antwoord.",
+  questionLabel: "Huub vraagt",
+  questionOr: "of",
+  questionOwn: "Typ je eigen antwoord…",
   questionSubmit: "Klaar",
   questionSkip: "Overslaan",
   questionCount: "{index} van {total}",
@@ -204,10 +299,25 @@ const nl: Record<Key, string> = {
   tool_plan: "Maakt een plan",
   tool_skill: "Laadt een vaardigheid",
   tool_other: "Is ermee bezig",
+  done_web: "{detail} gelezen",
+  done_search: "Zocht op het web",
+  done_shell: "Opdracht uitgevoerd",
+  done_read: "{detail} gelezen",
+  done_write: "{detail} geschreven",
+  done_edit: "{detail} aangepast",
+  done_files: "Bestanden doorzocht",
+  done_helper: "Hulpje ingeschakeld",
+  done_plan: "Plan gemaakt",
+  done_skill: "Vaardigheid geladen",
+  done_other: "Hulpmiddel gebruikt",
   settings: "Instellingen",
   you: "Jij",
   persona: "Persona",
   personaHint: "Wie Huub voor jou is. Geldt vanaf je volgende bericht.",
+  personaShort: "Wie Huub voor jou is",
+  memoryShort: "Wat Huub over je onthoudt",
+  remindersShort: "Wat Huub volgens schema doet",
+  spendingShort: "Vandaag en deze maand",
   personaDefault: "Standaard",
   personaNone: "Geen persona",
   memory: "Geheugen",
@@ -299,6 +409,35 @@ export function toolLabel(kind: ToolKind, detail: string): string {
   const text = usesDetail ? t(key, { detail: short || "…" }) : t(key)
   const extra = !usesDetail && short && kind !== "other" ? `: ${short}` : ""
   return `${TOOL_EMOJI[kind]} ${text}${extra}`
+}
+
+/** What a tool did or does, without its emoji: "Searched the web", "Reading teso.nl". */
+export function toolText(kind: ToolKind, detail: string, done: boolean): string {
+  const key = `${done ? "done" : "tool"}_${kind}` as Key
+  const short = detail.length > 32 ? `${detail.slice(0, 31)}…` : detail
+  return strings[key].includes("{detail}") ? t(key, { detail: short || "…" }) : t(key)
+}
+
+export function toolEmoji(kind: ToolKind): string {
+  return TOOL_EMOJI[kind] ?? TOOL_EMOJI.other
+}
+
+/** "Vandaag", "Gisteren", "zaterdag 24 oktober". */
+export function dayLabel(at: number, now = Date.now()): string {
+  const day = new Date(at).toDateString()
+  if (day === new Date(now).toDateString()) return t("dayToday")
+  if (day === new Date(now - 86_400_000).toDateString()) return t("dayYesterday")
+  const sameYear = new Date(at).getFullYear() === new Date(now).getFullYear()
+  return new Date(at).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", ...(sameYear ? {} : { year: "numeric" }) })
+}
+
+/** The list's greeting, by time of day. */
+export function tagline(name: string | null, now = new Date()): string {
+  const h = now.getHours()
+  if (h < 5) return t("tagline_night")
+  if (h < 12) return name ? t("tagline_morning", { name }) : t("tagline_day")
+  if (h < 18) return t("tagline_day")
+  return t("tagline_evening")
 }
 
 /** Short relative time for the conversation list. */

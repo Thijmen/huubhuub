@@ -59,6 +59,10 @@ export interface ConversationSummary {
   busy: boolean
   /** The start of the last message, as plain text. */
   preview: string | null
+  /** Who said the preview. Optional: servers before 0.4 leave it out. */
+  from?: "user" | "assistant" | null
+  /** Huub asked a question and waits for the answer. Optional: servers before 0.4 leave it out. */
+  asking?: boolean
   /** The conversation is also a Telegram topic. */
   telegram: boolean
   /** Kept at the top of the list. */
@@ -123,6 +127,17 @@ export interface AppImage {
   uri: string | null
 }
 
+/** A tool call Huub made while answering: a web search, reading a page, running a command. */
+export interface AppTool {
+  id: string
+  kind: ToolKind
+  /** What it was about: a query, a host, a file name. May be empty. */
+  detail: string
+  status: "running" | "ok" | "error"
+  /** Something worth its own card: a reminder Huub set, or something it saved to memory. */
+  note?: { type: "reminder" | "memory"; text: string }
+}
+
 export type AppMessage =
   | { id: string; role: "user"; createdAt: number; text: string; images: AppImage[] }
   | {
@@ -131,6 +146,8 @@ export type AppMessage =
       createdAt: number
       /** Text fragments in order; join them with blank lines. Markdown. */
       parts: string[]
+      /** Tool calls in this step, in order. A step can have tools and no text. Optional: servers before 0.4 leave it out. */
+      tools?: AppTool[]
       done: boolean
       error: string | null
     }

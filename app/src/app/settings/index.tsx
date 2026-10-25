@@ -4,7 +4,7 @@ import { router, Stack, useFocusEffect } from "expo-router"
 import * as Updates from "expo-updates"
 import { useCallback, useEffect, useState } from "react"
 import { Alert, Linking, ScrollView, Text, View } from "react-native"
-import { HuubAvatar } from "@/components/art"
+import { Halo } from "@/components/art"
 import { ActionRow, InfoRow, LinkRow, Section } from "@/components/settings-ui"
 import { t } from "@/lib/i18n"
 import { useSession } from "@/lib/session"
@@ -46,24 +46,24 @@ export default function SettingsScreen() {
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: space.lg, gap: space.xl }}>
       <Stack.Screen options={{ title: t("settings") }} />
       <View style={{ alignItems: "center", gap: space.sm, paddingTop: space.md }}>
-        <HuubAvatar size={64} />
-        <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.title }}>{session.me.person.name ?? t("appName")}</Text>
+        <Halo size={76} />
+        <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.title, lineHeight: font.lineHeight.title, marginTop: space.xs }}>{session.me.person.name ?? t("appName")}</Text>
       </View>
       <Section title={t("you")}>
-        <LinkRow href="/settings/persona" emoji="🎭" label={t("persona")} detail={t("personaHint")} />
-        <LinkRow href="/settings/memory" emoji="🧠" label={t("memory")} detail={t("memoryHint")} />
-        <LinkRow href="/settings/reminders" emoji="⏰" label={t("reminders")} detail={t("remindersHint")} />
-        <LinkRow href="/settings/spending" emoji="💶" label={t("spending")} last />
+        <LinkRow href="/settings/persona" emoji="🎭" tint={4} label={t("persona")} detail={t("personaShort")} />
+        <LinkRow href="/settings/memory" emoji="🧠" tint={0} label={t("memory")} detail={t("memoryShort")} />
+        <LinkRow href="/settings/reminders" emoji="⏰" tint={1} label={t("reminders")} detail={t("remindersShort")} />
+        <LinkRow href="/settings/spending" emoji="💶" tint={2} label={t("spending")} detail={t("spendingShort")} last />
       </Section>
-      <Section title={t("telegram")} hint={telegram.linked ? undefined : t("telegramHint")}>
+      <Section title={t("telegram")}>
         {telegram.linked ? (
-          <InfoRow label={t("telegram")} value={session.me.person.telegramUsername ? `${t("telegramLinked")} · @${session.me.person.telegramUsername}` : t("telegramLinked")} last />
+          <LinkRow emoji="✈️" tint={1} label={t("telegramLinked")} detail={session.me.person.telegramUsername ? `@${session.me.person.telegramUsername}` : undefined} done last />
         ) : (
-          <ActionRow label={telegram.waiting ? t("telegramLinkAgain") : t("telegramLink")} onPress={() => void telegram.link()} last />
+          <LinkRow emoji="✈️" tint={1} label={telegram.waiting ? t("telegramLinkAgain") : t("telegramLink")} detail={t("telegramHint")} onPress={() => void telegram.link()} last />
         )}
       </Section>
       {!!telegram.note && (
-        <Text selectable style={{ color: c.textMuted, fontSize: font.size.small, textAlign: "center" }}>
+        <Text selectable style={{ color: c.textMuted, fontSize: 13, lineHeight: 18, textAlign: "center", marginTop: -space.md, paddingHorizontal: space.lg }}>
           {telegram.note}
         </Text>
       )}

@@ -1,4 +1,4 @@
-import type { AppEvent, AppMessage, ConversationPage, Question, ToolKind } from "@server/protocol"
+import type { AppEvent, AppMessage, AppTool, ConversationPage, Question, ToolKind } from "@server/protocol"
 
 /** A message typed here that the server hasn't shown back yet. */
 export interface Pending {
@@ -21,6 +21,8 @@ export interface ChatState {
   busy: boolean
   /** What Huub is doing right now, while a tool runs. */
   activity: { id: string; kind: ToolKind; detail: string } | null
+  /** Tool calls of the current reply, until the server's messages include them. */
+  tools: AppTool[]
   retry: { attempt: number; error: string } | null
   /** Why the last run failed, until the next one starts. */
   failure: string | null
@@ -38,6 +40,7 @@ export const initialChat: ChatState = {
   older: null,
   busy: false,
   activity: null,
+  tools: [],
   retry: null,
   failure: null,
   question: null,
@@ -66,6 +69,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
         archived: page.conversation.archived,
         busy: page.conversation.busy,
         activity: page.conversation.busy ? s.activity : null,
+        tools: page.conversation.busy ? s.tools : [],
         messages,
         older: s.loaded ? s.older : page.older,
         pending: s.pending.filter((p) => !delivered(p, page.messages)),
@@ -88,7 +92,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
 function applyEvent(s: ChatState, e: AppEvent): ChatState {
   switch (e.type) {
     case "run.started":
-      return { ...s, busy: true, failure: null, retry: null }
+      return { ...s, busy: true, failure: null, retry: null, tools: [] }
     case "run.ended":
       return {
         ...s,
@@ -110,9 +114,14 @@ function applyEvent(s: ChatState, e: AppEvent): ChatState {
       const messages = idx >= 0 ? s.messages.map((m, i) => (i === idx ? next : m)) : [...s.messages, next]
       return { ...s, busy: true, messages, retry: null }
     }
-    case "activity":
-      if (e.status === "running") return { ...s, busy: true, activity: { id: e.id, kind: e.kind, detail: e.detail } }
-      return s.activity?.id === e.id ? { ...s, activity: null } : s
+    case "activity": {
+      const known = s.tools.find((x) => x.id === e.id)
+      // The first event of a call has no detail yet; keep the one that arrives with its input.
+      const tool: AppTool = { id: e.id, kind: e.kind, detail: e.detail || known?.detail || "", status: e.status }
+      const tools = known ? s.tools.map((x) => (x.id === e.id ? tool : x)) : [...s.tools, tool]
+      if (e.status === "running") return { ...s, busy: true, tools, activity: { id: e.id, kind: e.kind, detail: tool.detail } }
+      return { ...s, tools, activity: s.activity?.id === e.id ? null : s.activity }
+    }
     case "retry":
       return { ...s, retry: { attempt: e.attempt, error: e.error } }
     case "title":

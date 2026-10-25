@@ -167,7 +167,7 @@ describe("app API", () => {
     store.set({ chatId: 43, threadId: 9 }, "ses_busy")
     const token = await signIn(43)
     const list = (await (await call("/v1/conversations", { token })).json()) as ConversationList
-    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", telegram: true, pinned: false, archived: false }])
+    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", from: "assistant", asking: false, telegram: true, pinned: false, archived: false }])
   })
 
   test("live events in the app's format", async () => {
