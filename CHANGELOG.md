@@ -1,5 +1,13 @@
 # huubhuub
 
+## 0.5.1
+
+### Patch Changes
+
+- [#34](https://github.com/Thijmen/huubhuub/pull/34) [`58fd2c4`](https://github.com/Thijmen/huubhuub/commit/58fd2c4d4155257e6e2cba36a4e8f9c916bd89c7) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react to v19.3.1
+
+- [#35](https://github.com/Thijmen/huubhuub/pull/35) [`840cca7`](https://github.com/Thijmen/huubhuub/commit/840cca77b0571894e88fbabcd7e6ad980a697a2c) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native-gesture-handler to ~3.4.0
+
 ## 0.5.0
 
 ### Minor Changes
