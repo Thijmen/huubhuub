@@ -7,8 +7,8 @@ import { existsSync } from "node:fs"
  * updates. Fill in once after `bunx eas-cli init` (with EXPO_OWNER below). Forks can set EAS_PROJECT_ID and
  * EXPO_OWNER instead. Without a project the app still works, minus push and updates.
  */
-const OFFICIAL_PROJECT_ID = ""
-const OFFICIAL_OWNER = ""
+const OFFICIAL_PROJECT_ID = "025416eb-b7d3-4ca0-b1b1-d5b79a2dfe58"
+const OFFICIAL_OWNER = "thijmenstavenuiter"
 const projectId = process.env.EAS_PROJECT_ID || OFFICIAL_PROJECT_ID || undefined
 const owner = process.env.EXPO_OWNER || OFFICIAL_OWNER || undefined
 /** Firebase config for Android push. EAS can provide it as a file environment variable. */
