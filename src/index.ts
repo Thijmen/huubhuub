@@ -3,6 +3,10 @@ import { randomBytes } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { startAdmin } from "./admin/server"
+import { AppAccess } from "./app-api/access"
+import { AppPush } from "./app-api/push"
+import { startAppApi } from "./app-api/server"
+import { appCommands } from "./app-commands"
 import { AgentSchedules } from "./agent-schedules"
 import { createBot } from "./bot"
 import { Chats } from "./chats"
@@ -21,12 +25,11 @@ import { ScheduleService } from "./schedule-service"
 import { Scheduler } from "./scheduler"
 import { Settings } from "./settings"
 import { SpendLimits } from "./spend-limits"
-import { threadParams } from "./reply"
 import { Usage } from "./usage"
 import { personaCommands } from "./persona-commands"
 import { skillCommands } from "./skill-commands"
 import { SkillSources } from "./skills"
-import { Store } from "./store"
+import { isAppChat, Store } from "./store"
 import { Transcriber } from "./transcribe"
 
 const config = loadConfig()
@@ -66,13 +69,26 @@ const questions = new Questions(
 )
 bridge.subscribeAll((e) => trackForms(questions, e))
 
+const appAccess = new AppAccess(store, () => config.APP_PUBLIC_URL)
+const appPush = new AppPush({ store, bridge })
+bridge.subscribeAll((e) => void appPush.onEvent(e).catch((err) => console.error("push failed", err)))
+// Telegram conversations get permission prompts answered by their view; app-only ones have no view.
+bridge.subscribeAll((e) => {
+  if (e.type !== "permission.asked") return
+  const thread = store.bySession(e.data.sessionID)
+  if (!thread || !isAppChat(thread.chatId)) return
+  void bridge.host.permission
+    .reply({ sessionID: e.data.sessionID, requestID: e.data.id, decision: "once" })
+    .catch((err) => console.error("permission reply failed", err))
+})
+
 const usage = new Usage(bridge, store)
 const limits = new SpendLimits({
   config,
   store,
   usage,
   bridge,
-  send: (key, html) => bot.api.sendMessage(key.chatId, html, { parse_mode: "HTML", ...threadParams(key) }).then(() => {}),
+  send: (key, html) => chats.post(key, html),
 })
 bridge.subscribeAll((e) => void limits.onEvent(e).catch((err) => console.error("spending limit check failed", err)))
 // Read past spend now, so the first message doesn't wait for it.
@@ -95,6 +111,8 @@ const bot = createBot(
   bridge,
   (b) => {
     chats = new Chats(b.api, bridge, store, config, transcriber, () => (b.isInited() ? b.botInfo : undefined), questions, limits)
+    chats.onPrompt = (sessionID, source) => appPush.onPrompt(sessionID, source)
+    chats.appNotice = (key, html) => appPush.notice(key, html)
     const runner = new ScheduleRunner({
       api: b.api,
       bridge,
@@ -104,7 +122,9 @@ const bot = createBot(
       allowedUsers: () => config.ALLOWED_USER_IDS,
       workspace: config.WORKSPACE_DIR,
       commandEnv,
-      spendBlocked: async (userId) => {
+      spendBlocked: async (chatId) => {
+        const userId = store.ownerOfChat(chatId)
+        if (userId === null) return undefined
         const hit = await limits.reached(userId)
         return hit ? limits.blockedText(hit) : undefined
       },
@@ -117,6 +137,7 @@ const bot = createBot(
     skillCommands({ skills, timeZone })(b)
     personaCommands({ store, personas })(b)
     costCommands({ usage, limits, timeZone })(b, c)
+    appCommands({ access: appAccess })(b, c)
   },
 )
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))
@@ -145,6 +166,7 @@ await bot.api.setMyCommands([
   { command: "skills", description: "List loaded skills" },
   { command: "persona", description: "Pick who the bot is for you" },
   { command: "memory", description: "What the bot remembers about you" },
+  { command: "app", description: "Sign in to the phone app" },
   { command: "help", description: "Show help" },
 ])
 
@@ -152,8 +174,24 @@ scheduler.start()
 skills.start()
 console.log(`Scheduler running (${store.schedules().length} jobs, time zone ${config.SCHEDULE_TIMEZONE})`)
 
-const admin = startAdmin({ config, bridge, store, settings, personas, bot, chats, scheduler, schedules, skills, github, githubAccess, usage, limits, token: adminToken() })
+const admin = startAdmin({ config, bridge, store, settings, personas, bot, chats, scheduler, schedules, skills, github, githubAccess, usage, limits, appAccess, token: adminToken() })
 console.log(`Admin UI on ${config.ADMIN_PUBLIC_URL ?? `http://localhost:${admin.port}`}`)
+
+const appApi =
+  config.APP_PORT > 0
+    ? startAppApi({
+        config,
+        store,
+        bridge,
+        chats,
+        questions,
+        access: appAccess,
+        push: appPush,
+        voice: Boolean(transcriber),
+        serverName: () => (bot.isInited() ? (bot.botInfo.first_name ?? "HuubHuub") : "HuubHuub"),
+      })
+    : undefined
+if (appApi) console.log(`App API on port ${appApi.port}${config.APP_PUBLIC_URL ? `, public at ${config.APP_PUBLIC_URL}` : " (set APP_PUBLIC_URL to invite people)"}`)
 
 function adminToken(): string {
   if (config.ADMIN_TOKEN) return config.ADMIN_TOKEN
@@ -172,6 +210,7 @@ async function shutdown(signal: string) {
   stopping = true
   console.log(`${signal} received, shutting down…`)
   admin.stop(true)
+  appApi?.stop(true)
   internal.stop()
   scheduler.stop()
   memoryReview.stop()

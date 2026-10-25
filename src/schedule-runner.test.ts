@@ -33,7 +33,7 @@ function runner(over: Partial<RunnerDeps> = {}) {
         throw new Error("no session expected")
       },
     },
-    chats: {},
+    chats: { post: async (key: { chatId: number }, text: string) => void sent.push({ chatId: key.chatId, text }) },
     questions: {},
     timeZone: () => "UTC",
     allowedUsers: () => [7, 8],

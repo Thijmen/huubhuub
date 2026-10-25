@@ -8,7 +8,7 @@ import { Reply } from "./reply"
 import { formatTime } from "./schedule-spec"
 import type { RunOutcome, Runner } from "./scheduler"
 import { runCommand, type CommandResult } from "./shell-task"
-import type { ChatKey, Schedule } from "./store"
+import { isAppChat, type ChatKey, type Schedule } from "./store"
 
 export const SILENT = "[SILENT]"
 const SILENT_HINT = `\n\n(This is a scheduled job. If there is nothing worth reporting, reply with exactly ${SILENT} and nothing else.)`
@@ -28,8 +28,8 @@ export interface RunnerDeps {
   workspace: string
   /** The environment commands run with: the agent's, plus a GitHub token when the app is connected. */
   commandEnv: (command: string) => Promise<Record<string, string | undefined>>
-  /** Why a person can't spend anything right now, if they can't. */
-  spendBlocked?: (userId: number) => Promise<string | undefined>
+  /** Why the owner of a private chat can't spend anything right now, if they can't. */
+  spendBlocked?: (chatId: number) => Promise<string | undefined>
 }
 
 /** Runs scheduled tasks: prompts in a fresh session, or shell commands in the workspace. Reports them in Telegram unless they run in the background. */
@@ -39,7 +39,7 @@ export class ScheduleRunner implements Runner {
   async notify(chatId: number | null, html: string): Promise<void> {
     const targets = chatId === null ? this.d.allowedUsers() : [chatId]
     for (const id of targets) {
-      await this.d.api.sendMessage(id, html, { parse_mode: "HTML" }).catch((err) => {
+      await this.d.chats.post({ chatId: id, threadId: 0 }, html).catch((err) => {
         if (chatId !== null) throw err
         console.error(`Couldn't notify ${id} about a background job`, err)
       })
@@ -73,8 +73,8 @@ export class ScheduleRunner implements Runner {
     const outcome: RunOutcome = failed(r) ? { status: "failed", error: `The command ${failure(r)}.`, output: r.output } : { status: "ok", output: r.output }
     if (s.chatId === null) return outcome
     if (s.silent && outcome.status === "ok" && !r.output.trim()) return { ...outcome, status: "silent" }
-    await this.d.api
-      .sendMessage(s.chatId, commandReport(s, r), { parse_mode: "HTML", link_preview_options: { is_disabled: true } })
+    await this.d.chats
+      .post({ chatId: s.chatId, threadId: 0 }, commandReport(s, r))
       .catch((err) => console.error(`Couldn't post the output of scheduled command ${s.id}`, err))
     return outcome
   }
@@ -83,7 +83,7 @@ export class ScheduleRunner implements Runner {
     const { bridge, questions } = this.d
     const carry = { ...(s.model ? { model: parseModelRef(s.model) } : {}), ...(s.agent ? { agent: s.agent } : {}) }
     const chatId = s.chatId
-    const sessionID = await bridge.createDetached(carry, { ...(chatId !== null ? { telegramChatId: chatId } : {}), scheduleId: s.id })
+    const sessionID = await bridge.createDetached(carry, { ...(chatId !== null ? { [isAppChat(chatId) ? "appChatId" : "telegramChatId"]: chatId } : {}), scheduleId: s.id })
     const run = new RunWatch(bridge, questions, sessionID)
     const silent = chatId !== null && s.silent
 

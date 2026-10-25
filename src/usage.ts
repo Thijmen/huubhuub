@@ -99,7 +99,7 @@ export class Usage {
 
   constructor(
     private readonly bridge: Pick<Bridge, "host">,
-    private readonly store: Pick<Store, "bySession" | "runBySession" | "schedule" | "people">,
+    private readonly store: Pick<Store, "bySession" | "runBySession" | "schedule" | "people" | "ownerOfChat">,
   ) {}
 
   /** Re-read sessions that changed, unless the last scan is younger than `maxAge`. */
@@ -132,8 +132,7 @@ export class Usage {
     return {
       root: s.id,
       source: run ? "schedule" : thread ? "conversation" : s.metadata?.purpose === "memory-review" ? "memory" : "other",
-      // Private chats have the person's own ID.
-      userId: thread?.userId ?? (chatId !== null && chatId > 0 ? chatId : null),
+      userId: thread?.userId ?? (chatId !== null ? this.store.ownerOfChat(chatId) : null),
       schedule: run ? (schedule?.name ?? "Deleted schedule") : null,
       bound: Boolean(thread),
     }

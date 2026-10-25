@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { parseModelRef, type Config } from "./config"
 import { stripJsonComments } from "./mcp-import"
 import { OpenCodeServer } from "./opencode-server"
-import type { ChatKey, Store } from "./store"
+import { isAppChat, type ChatKey, type Store } from "./store"
 
 export type Host = OpenCodeClient
 export type SessionEvent =
@@ -158,7 +158,10 @@ export class Bridge {
   }
 
   async createSession(key: ChatKey, carry: Carry = {}, autoTitle = false): Promise<string> {
-    const id = await this.createDetached(carry, { telegramChatId: key.chatId, ...(key.threadId ? { telegramThreadId: key.threadId } : {}) })
+    const metadata: Record<string, number> = isAppChat(key.chatId)
+      ? { appChatId: key.chatId, appThreadId: key.threadId }
+      : { telegramChatId: key.chatId, ...(key.threadId ? { telegramThreadId: key.threadId } : {}) }
+    const id = await this.createDetached(carry, metadata)
     this.store.set(key, id, autoTitle)
     return id
   }

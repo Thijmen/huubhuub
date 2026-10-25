@@ -18,8 +18,11 @@ export const VERBS = [
 
 const VERB_MS = 4000
 
-/** A short, friendly description of what a tool call is doing. */
-export function toolActivity(name: string, input: Record<string, unknown> | undefined): string {
+/** What kind of thing a tool call does. The app turns this into a label in the phone's language. */
+export type ToolKind = "web" | "search" | "shell" | "read" | "write" | "edit" | "files" | "helper" | "plan" | "skill" | "other"
+
+/** What a tool call is doing, with the detail worth showing (a host, a query, a file name). */
+export function describeTool(name: string, input: Record<string, unknown> | undefined): { kind: ToolKind; detail: string } {
   const str = (...keys: string[]) => {
     for (const k of keys) {
       const v = input?.[k]
@@ -31,41 +34,70 @@ export function toolActivity(name: string, input: Record<string, unknown> | unde
     const p = str("filePath", "path", "file")
     return p ? p.split("/").filter(Boolean).at(-1) ?? p : ""
   }
-  const with_ = (text: string, detail: string) => (detail ? `${text} ${truncate(detail, 50)}` : text)
   switch (name.toLowerCase()) {
     case "webfetch":
     case "fetch":
-      return with_("🌐 Reading", host(str("url")))
+      return { kind: "web", detail: host(str("url")) }
     case "websearch":
     case "search":
-      return with_("🔎 Searching the web for", quote(str("query")))
+      return { kind: "search", detail: str("query") }
     case "bash":
     case "shell":
-      return with_("⚙️ Running", str("description") || str("command"))
+      return { kind: "shell", detail: str("description") || str("command") }
     case "read":
-      return with_("📖 Reading", file())
+      return { kind: "read", detail: file() }
     case "write":
-      return with_("✍️ Writing", file())
+      return { kind: "write", detail: file() }
     case "edit":
     case "multiedit":
     case "patch":
     case "apply_patch":
-      return with_("✏️ Editing", file())
+      return { kind: "edit", detail: file() }
     case "grep":
     case "glob":
     case "list":
     case "ls":
-      return "🔎 Searching the files"
+      return { kind: "files", detail: "" }
     case "task":
     case "agent":
-      return with_("🤝 Asking a helper to", lowerFirst(str("description")))
+      return { kind: "helper", detail: str("description") }
     case "todowrite":
     case "todoread":
     case "todo":
+      return { kind: "plan", detail: "" }
+    case "skill":
+      return { kind: "skill", detail: str("name") }
+    default:
+      return { kind: "other", detail: name }
+  }
+}
+
+/** A short, friendly description of what a tool call is doing. */
+export function toolActivity(name: string, input: Record<string, unknown> | undefined): string {
+  const { kind, detail } = describeTool(name, input)
+  const with_ = (text: string, d: string) => (d ? `${text} ${truncate(d, 50)}` : text)
+  switch (kind) {
+    case "web":
+      return with_("🌐 Reading", detail)
+    case "search":
+      return with_("🔎 Searching the web for", quote(detail))
+    case "shell":
+      return with_("⚙️ Running", detail)
+    case "read":
+      return with_("📖 Reading", detail)
+    case "write":
+      return with_("✍️ Writing", detail)
+    case "edit":
+      return with_("✏️ Editing", detail)
+    case "files":
+      return "🔎 Searching the files"
+    case "helper":
+      return with_("🤝 Asking a helper to", lowerFirst(detail))
+    case "plan":
       return "📝 Planning"
     case "skill":
-      return with_("📚 Loading skill", str("name"))
-    default:
+      return with_("📚 Loading skill", detail)
+    case "other":
       return `🔧 Using ${name}`
   }
 }
