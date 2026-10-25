@@ -56,12 +56,32 @@ export interface ConversationList {
   conversations: ConversationSummary[]
 }
 
+/** A photo to send along: JPEG, PNG, GIF or WebP, base64-encoded. At most 4 per message, 10 MB each. */
+export interface ImageUpload {
+  data: string
+  name?: string
+}
+
 export interface NewConversationRequest {
   /** Send this straight away. */
   text?: string
+  images?: ImageUpload[]
 }
 
 export interface SendRequest {
+  /** May be empty when there are images. */
+  text?: string
+  images?: ImageUpload[]
+}
+
+/** A voice note to turn into text; send the text as a message afterwards. */
+export interface TranscribeRequest {
+  /** Base64-encoded audio: AAC in MP4 (`.m4a`) or OGG/Opus. */
+  audio: string
+  mime: string
+}
+
+export interface TranscribeResponse {
   text: string
 }
 

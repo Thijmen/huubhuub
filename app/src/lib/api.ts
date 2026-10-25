@@ -4,10 +4,12 @@ import type {
   ConversationList,
   ConversationPage,
   ConversationSummary,
+  ImageUpload,
   Me,
   PairResponse,
   Question,
   QuestionAction,
+  TranscribeResponse,
 } from "@server/protocol"
 import { t } from "./i18n"
 
@@ -46,8 +48,11 @@ export class Api {
   conversations = () => this.request<ConversationList>("GET", "/v1/conversations")
   conversation = (id: string, cursor?: string) =>
     this.request<ConversationPage>("GET", `/v1/conversations/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`)
-  create = (text?: string) => this.request<ConversationSummary>("POST", "/v1/conversations", text ? { text } : {})
-  send = (id: string, text: string) => this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/messages`, { text })
+  create = (text?: string, images: ImageUpload[] = []) =>
+    this.request<ConversationSummary>("POST", "/v1/conversations", { ...(text ? { text } : {}), ...(images.length ? { images } : {}) })
+  send = (id: string, text: string, images: ImageUpload[] = []) =>
+    this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/messages`, { text, ...(images.length ? { images } : {}) })
+  transcribe = (audio: string, mime: string) => this.request<TranscribeResponse>("POST", "/v1/transcribe", { audio, mime })
   stop = (id: string) => this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/stop`)
   answer = (id: string, formID: string, action: QuestionAction) =>
     this.request<Question | null>("POST", `/v1/conversations/${encodeURIComponent(id)}/question`, { formID, action })

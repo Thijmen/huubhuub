@@ -1,4 +1,5 @@
-import { UserError, type Chats } from "../chats"
+import { AudioError } from "../audio"
+import { sniffImage, UserError, type AppImage, type Chats } from "../chats"
 import type { Config } from "../config"
 import type { Bridge } from "../opencode"
 import { parseAction, type QuestionAction as ServerQuestionAction, type Questions } from "../question"
@@ -18,10 +19,14 @@ import {
   type PairRequest,
   type PairResponse,
   type PushTokenRequest,
+  type ImageUpload,
   type QuestionRequest,
   type SendRequest,
+  type TranscribeRequest,
+  type TranscribeResponse,
 } from "./protocol"
 import type { AppPush } from "./push"
+import type { Transcriber } from "../transcribe"
 
 const PAGE = 60
 const LIST_LIMIT = 100
@@ -30,6 +35,9 @@ const HEARTBEAT_MS = 15_000
 const PAIR_WINDOW_MS = 15 * 60_000
 const PAIR_PER_IP = 10
 const PAIR_TOTAL = 60
+const MAX_IMAGES = 4
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024
 
 export interface AppDeps {
   config: Config
@@ -39,8 +47,8 @@ export interface AppDeps {
   questions: Questions
   access: AppAccess
   push: AppPush
-  /** Whether voice notes can be transcribed. */
-  voice: boolean
+  /** Turns voice notes into text; undefined when the server has no AWS credentials. */
+  transcriber?: Pick<Transcriber, "transcribeRecording">
   /** The Telegram bot's name, shown in the app. */
   serverName: () => string
 }
@@ -111,9 +119,10 @@ export function startAppApi(d: AppDeps) {
         }),
         POST: authed(async (req, device): Promise<ConversationSummary> => {
           const body = await read<NewConversationRequest>(req).catch(() => ({}) as NewConversationRequest)
-          const text = body.text === undefined ? "" : messageText(body.text)
+          const images = imageUploads(body.images)
+          const text = body.text === undefined ? "" : messageText(body.text, images.length > 0)
           const { sessionID } = await d.chats.startFromApp(device.personId)
-          if (text) await d.chats.sendFromApp(sessionID, device.personId, text)
+          if (text || images.length) await d.chats.sendFromApp(sessionID, device.personId, text, images)
           return summary(d, d.store.bySession(sessionID)!, await activeSessions(d))
         }),
       },
@@ -144,8 +153,22 @@ export function startAppApi(d: AppDeps) {
       "/v1/conversations/:id/messages": {
         POST: authed(async (req, device) => {
           const thread = owned(d, device, req)
-          const { text } = await read<SendRequest>(req)
-          await d.chats.sendFromApp(thread.sessionID, device.personId, messageText(text))
+          const body = await read<SendRequest>(req)
+          const images = imageUploads(body.images)
+          await d.chats.sendFromApp(thread.sessionID, device.personId, messageText(body.text ?? "", images.length > 0), images)
+        }),
+      },
+      "/v1/transcribe": {
+        POST: authed(async (req): Promise<TranscribeResponse> => {
+          if (!d.transcriber) throw new HttpError(501, "This server can't transcribe voice notes.")
+          const body = await read<TranscribeRequest>(req)
+          const audio = decodeBase64(body.audio, MAX_AUDIO_BYTES, "recording")
+          const text = await d.transcriber.transcribeRecording(audio, String(body.mime ?? "audio/mp4")).catch((err) => {
+            if (err instanceof AudioError) throw new HttpError(400, err.message)
+            throw err
+          })
+          if (!text) throw new HttpError(422, "I couldn't make out any speech.")
+          return { text }
         }),
       },
       "/v1/conversations/:id/stop": {
@@ -192,7 +215,7 @@ function me(d: AppDeps, device: AppDevice): Me {
     device: { id: device.id, name: device.name },
     serverName: d.serverName(),
     apiVersion: APP_API_VERSION,
-    features: { voice: d.voice, telegram: person?.telegramId != null },
+    features: { voice: Boolean(d.transcriber), telegram: person?.telegramId != null },
   }
 }
 
@@ -268,10 +291,37 @@ function eventStream(d: AppDeps, sessionID: string, signal: AbortSignal): Respon
   return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" } })
 }
 
-function messageText(text: unknown): string {
-  if (typeof text !== "string" || !text.trim()) throw new HttpError(400, "Type a message first.")
+/** The text of a message; it may be empty when photos come along. */
+function messageText(text: unknown, optional = false): string {
+  if (typeof text !== "string" || !text.trim()) {
+    if (optional && (text === undefined || typeof text === "string")) return ""
+    throw new HttpError(400, "Type a message first.")
+  }
   if (text.length > MAX_TEXT) throw new HttpError(400, `Keep messages under ${MAX_TEXT} characters.`)
   return text.trim()
+}
+
+/** Photos sent along with a message, checked to be images we can pass on. */
+function imageUploads(uploads: unknown): AppImage[] {
+  if (uploads === undefined || uploads === null) return []
+  if (!Array.isArray(uploads)) throw new HttpError(400, "Expected a list of images.")
+  if (uploads.length > MAX_IMAGES) throw new HttpError(400, `Send at most ${MAX_IMAGES} photos at once.`)
+  return uploads.map((u: ImageUpload, i) => {
+    const bytes = decodeBase64(u?.data, MAX_IMAGE_BYTES, "photo")
+    const mime = sniffImage(bytes)
+    if (!mime) throw new HttpError(400, `Photo ${i + 1} isn't a JPEG, PNG, GIF or WebP image.`)
+    const name = typeof u.name === "string" && u.name.trim() ? u.name.trim().slice(0, 100) : undefined
+    return { bytes, mime, ...(name ? { name } : {}) }
+  })
+}
+
+function decodeBase64(data: unknown, max: number, what: string): Uint8Array {
+  if (typeof data !== "string" || !data) throw new HttpError(400, `The ${what} is missing.`)
+  // Base64 is 4/3 the size; refuse before decoding something huge.
+  if (data.length > Math.ceil((max * 4) / 3) + 4) throw new HttpError(413, `The ${what} is too large.`)
+  const bytes = Buffer.from(data.replace(/^data:[^,]*,/, ""), "base64")
+  if (!bytes.length) throw new HttpError(400, `The ${what} is empty.`)
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
 function questionAction(action: unknown): ServerQuestionAction {

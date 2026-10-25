@@ -13,7 +13,7 @@ import { isAppChat, Store, type ChatKey } from "./store"
 let dir: string
 let store: Store
 let telegram: { method: string; chatId: number; text?: string; threadId?: number }[]
-let prompts: { sessionID: string; text: string }[]
+let prompts: { sessionID: string; text: string; files?: { uri: string; name?: string }[] }[]
 let sources: [string, PromptSource][]
 let notices: { key: ChatKey; html: string }[]
 let chats: Chats
@@ -42,6 +42,14 @@ beforeEach(() => {
       telegram.push({ method: "sendMessage", chatId, text, threadId: opts?.message_thread_id })
       return { message_id: 1 }
     },
+    sendPhoto: async (chatId: number, _photo: unknown, opts?: { caption?: string; message_thread_id?: number }) => {
+      telegram.push({ method: "sendPhoto", chatId, text: opts?.caption, threadId: opts?.message_thread_id })
+      return { message_id: 2 }
+    },
+    sendMediaGroup: async (chatId: number, media: unknown[], opts?: { message_thread_id?: number }) => {
+      telegram.push({ method: `sendMediaGroup:${media.length}`, chatId, threadId: opts?.message_thread_id })
+      return []
+    },
   } as unknown as Api
   const create = (key: ChatKey) => {
     const id = `ses_${++sessions}`
@@ -52,7 +60,8 @@ beforeEach(() => {
     openThread: async (key: ChatKey) => create(key),
     sessionFor: async (key: ChatKey) => store.get(key)?.sessionID ?? create(key),
     resetSession: async (key: ChatKey) => create(key),
-    prompt: async (sessionID: string, text: string) => void prompts.push({ sessionID, text }),
+    prompt: async (sessionID: string, text: string, files: { uri: string; name?: string }[] = []) =>
+      void prompts.push({ sessionID, text, ...(files.length ? { files } : {}) }),
     subscribe: () => () => {},
     onResync: () => () => {},
     interrupt: async () => {},
@@ -121,6 +130,18 @@ describe("conversations from the app", () => {
 
     await chats.post({ chatId: 42, threadId: 0 }, "hi")
     expect(telegram).toEqual([{ method: "sendMessage", chatId: 42, text: "hi", threadId: undefined }])
+  })
+
+  test("photos go to the agent and, for Telegram topics, into the topic", async () => {
+    store.seePerson(42, "Thijmen", null)
+    const { key, sessionID } = await chats.startFromApp(42)
+    const jpeg = { bytes: new Uint8Array([0xff, 0xd8, 0xff, 1]), mime: "image/jpeg" }
+    await chats.sendFromApp(sessionID, 42, "", [jpeg])
+    expect(prompts.at(-1)).toEqual({ sessionID, text: "Describe this image.", files: [{ uri: "data:image/jpeg;base64,/9j/AQ==", name: "photo-1.jpeg" }] })
+    expect(telegram.at(-1)).toMatchObject({ method: "sendPhoto", chatId: 42, threadId: key.threadId })
+    await chats.sendFromApp(sessionID, 42, "welke is mooier?", [jpeg, jpeg])
+    expect(telegram.at(-1)).toMatchObject({ method: "sendMediaGroup:2", chatId: 42 })
+    expect(prompts.at(-1)?.text).toBe("welke is mooier?")
   })
 
   test("a typed message answers an open question instead of prompting", async () => {

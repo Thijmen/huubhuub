@@ -1,4 +1,4 @@
-import type { Api, Context } from "grammy"
+import { InputFile, type Api, type Context } from "grammy"
 import type { Chat, User, UserFromGetMe } from "grammy/types"
 import type { Config } from "./config"
 import { messageText } from "./entities"
@@ -254,24 +254,45 @@ export class Chats {
     return { key, sessionID }
   }
 
-  /** A message typed in the app. It answers an open question; otherwise it's a prompt, echoed into Telegram when the conversation lives there. */
-  async sendFromApp(sessionID: string, personId: number, text: string, files: Attachment[] = []): Promise<void> {
+  /**
+   * A message from the app. Text alone answers an open question; otherwise it's a prompt, echoed into Telegram
+   * (photos included) when the conversation lives there.
+   */
+  async sendFromApp(sessionID: string, personId: number, text: string, images: AppImage[] = []): Promise<void> {
     const flow = this.questions.pending(sessionID)
-    if (flow && text.trim()) {
+    if (flow && text.trim() && !images.length) {
       await this.questions.act(sessionID, flow.formID, { type: "text", text })
       return
     }
     const key = this.store.bySession(sessionID)
     if (!key) throw new UserError("That conversation no longer exists.")
     await this.limits?.check(personId)
-    if (!isAppChat(key.chatId)) await this.echo(key, "📱 <i>from the app</i>", text)
-    await this.prompt(key, text, files, personId, "app")
+    const prompt = text.trim() || "Describe this image."
+    if (!isAppChat(key.chatId)) {
+      if (images.length) await this.echoPhotos(key, "📱 <i>from the app</i>", text, images)
+      else await this.echo(key, "📱 <i>from the app</i>", text)
+    }
+    const files = images.map((img, i) => ({ uri: toDataUri(img.bytes, img.mime), name: img.name ?? `photo-${i + 1}.${img.mime.split("/")[1]}` }))
+    await this.prompt(key, prompt, files, personId, "app")
   }
 
   /** Post a notice in a chat: a Telegram message, or a push for app-only chats. */
   async post(key: ChatKey, html: string): Promise<void> {
     if (isAppChat(key.chatId)) return this.appNotice?.(key, html)
     await this.api.sendMessage(key.chatId, html, { parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...threadParams(key) })
+  }
+
+  private async echoPhotos(key: ChatKey, label: string, text: string, images: AppImage[]): Promise<void> {
+    const caption = text.trim() ? `${label}\n${escape(truncate(text, 900))}` : label
+    const media = images.map((img, i) => ({
+      type: "photo" as const,
+      media: new InputFile(img.bytes, img.name ?? `photo-${i + 1}`),
+      ...(i === 0 ? { caption, parse_mode: "HTML" as const } : {}),
+    }))
+    await (media.length === 1
+      ? this.api.sendPhoto(key.chatId, media[0]!.media, { caption, parse_mode: "HTML", ...threadParams(key) })
+      : this.api.sendMediaGroup(key.chatId, media, threadParams(key))
+    ).catch((err) => console.error("photo echo failed", err))
   }
 
   private async echo(key: ChatKey, label: string, text: string): Promise<void> {
@@ -379,6 +400,13 @@ export class Chats {
 }
 
 export class UserError extends Error {}
+
+/** A photo sent from the app, already checked to be an image. */
+export interface AppImage {
+  bytes: Uint8Array
+  mime: string
+  name?: string
+}
 
 /** The conversation a message or button press belongs to. */
 export function keyOf(ctx: Context): ChatKey {

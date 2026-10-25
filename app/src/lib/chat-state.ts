@@ -4,6 +4,8 @@ import type { AppEvent, AppMessage, ConversationPage, Question, ToolKind } from 
 export interface Pending {
   id: string
   text: string
+  /** Local files of photos sent along. */
+  images: string[]
   createdAt: number
 }
 
@@ -118,9 +120,9 @@ function openQuestion(q: Question | null): Question | null {
   return q && q.status === "pending" ? q : null
 }
 
-/** A pending message shows up in the server's page as a user message with the same text. */
+/** A pending message shows up in the server's page as a user message with the same text (or, for photos alone, with photos). */
 function delivered(p: Pending, messages: AppMessage[]): boolean {
-  return messages.some((m) => m.role === "user" && m.text.trim() === p.text.trim())
+  return messages.some((m) => m.role === "user" && (p.text.trim() ? m.text.trim() === p.text.trim() : p.images.length > 0 && m.images.length > 0 && m.createdAt >= p.createdAt - 120_000))
 }
 
 /** Merge two ordered lists of messages; `b` is newer and wins. */

@@ -18,7 +18,8 @@ let store: Store
 let server: ReturnType<typeof startAppApi>
 let base: string
 const listeners = new Map<string, (e: SessionEvent) => void>()
-const sent: { sessionID: string; personId: number; text: string }[] = []
+const sent: { sessionID: string; personId: number; text: string; images?: { mime: string; bytes: Uint8Array }[] }[] = []
+const recordings: { mime: string; bytes: number }[] = []
 const interrupted: string[] = []
 let blocked = false
 
@@ -56,14 +57,21 @@ beforeAll(() => {
       store.set(key, sessionID)
       return { key, sessionID }
     },
-    sendFromApp: async (sessionID: string, personId: number, text: string) => {
+    sendFromApp: async (sessionID: string, personId: number, text: string, images: { mime: string; bytes: Uint8Array }[] = []) => {
       if (blocked) throw new SpendLimitError("⛔ Limit reached.")
-      sent.push({ sessionID, personId, text })
+      sent.push({ sessionID, personId, text, ...(images.length ? { images } : {}) })
     },
   } as unknown as Chats
   const access = new AppAccess(store, () => config.APP_PUBLIC_URL)
   const push = new AppPush({ store, bridge, send: async () => [] })
-  server = startAppApi({ config, store, bridge, chats, questions, access, push, voice: false, serverName: () => "Huub" })
+  server = startAppApi({ config, store, bridge, chats, questions, access, push, transcriber: {
+      transcribeRecording: async (audio: Uint8Array, mime: string) => {
+        recordings.push({ mime, bytes: audio.length })
+        return audio.length > 3 ? "Wat eten we vanavond?" : ""
+      },
+    },
+    serverName: () => "Huub",
+  })
   base = `http://127.0.0.1:${server.port}`
 })
 
@@ -93,7 +101,7 @@ describe("app API", () => {
     const sanne = store.createAppPerson("Sanne")
     const token = await signIn(sanne.id)
     const me = (await (await call("/v1/me", { token })).json()) as Me
-    expect(me).toMatchObject({ person: { id: sanne.id, name: "Sanne" }, device: { name: "Pixel" }, serverName: "Huub", features: { voice: false, telegram: false } })
+    expect(me).toMatchObject({ person: { id: sanne.id, name: "Sanne" }, device: { name: "Pixel" }, serverName: "Huub", features: { voice: true, telegram: false } })
     expect((await call("/v1/me")).status).toBe(401)
     expect((await call("/v1/me", { token: "wrong" })).status).toBe(401)
   })
@@ -174,5 +182,34 @@ describe("app API", () => {
     const res = await call("/pair")
     expect(res.status).toBe(200)
     expect(await res.text()).toContain("huubhuub://pair?server=")
+  })
+
+  test("photos come along with a message, and only real images", async () => {
+    const p = store.createAppPerson("Photos")
+    const token = await signIn(p.id)
+    store.set({ chatId: store.appChatOf(p.id), threadId: 1 }, "ses_photo")
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString("base64")
+    const ok = await call("/v1/conversations/ses_photo/messages", { method: "POST", token, body: { images: [{ data: png, name: "bord.png" }] } })
+    expect(ok.status).toBe(200)
+    expect(sent.at(-1)).toMatchObject({ sessionID: "ses_photo", text: "", images: [{ mime: "image/png", name: "bord.png" }] })
+    const bad = await call("/v1/conversations/ses_photo/messages", { method: "POST", token, body: { text: "kijk", images: [{ data: Buffer.from("not an image").toString("base64") }] } })
+    expect(bad.status).toBe(400)
+    const many = await call("/v1/conversations/ses_photo/messages", { method: "POST", token, body: { images: Array(5).fill({ data: png }) } })
+    expect(many.status).toBe(400)
+    // A new conversation can start with a photo.
+    const created = await call("/v1/conversations", { method: "POST", token, body: { images: [{ data: png }] } })
+    expect(created.status).toBe(200)
+    expect(sent.at(-1)?.images).toHaveLength(1)
+  })
+
+  test("voice notes are transcribed", async () => {
+    const p = store.createAppPerson("Voice")
+    const token = await signIn(p.id)
+    const res = await call("/v1/transcribe", { method: "POST", token, body: { audio: Buffer.from("aac-bytes").toString("base64"), mime: "audio/mp4" } })
+    expect(await res.json()).toEqual({ text: "Wat eten we vanavond?" })
+    expect(recordings.at(-1)).toEqual({ mime: "audio/mp4", bytes: 9 })
+    const silent = await call("/v1/transcribe", { method: "POST", token, body: { audio: Buffer.from("ab").toString("base64"), mime: "audio/mp4" } })
+    expect(silent.status).toBe(422)
+    expect((await call("/v1/transcribe", { method: "POST", token, body: { mime: "audio/mp4" } })).status).toBe(400)
   })
 })

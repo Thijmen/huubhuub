@@ -48,8 +48,16 @@ const config: ExpoConfig = {
     "expo-image",
     "expo-font",
     ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 160, backgroundColor: "#FFF8F0", dark: { backgroundColor: "#17130F" } }],
-    ["expo-camera", { cameraPermission: "HuubHuub uses the camera to scan your invite QR code.", recordAudioAndroid: false }],
+    ["expo-camera", { cameraPermission: "HuubHuub uses the camera to take photos for Huub and to scan your invite QR code.", recordAudioAndroid: false }],
     ["expo-notifications", { color: "#E85D04" }],
+    ["expo-audio", { microphonePermission: "HuubHuub uses the microphone for voice notes to Huub." }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "HuubHuub lets you send photos from your library to Huub.",
+        cameraPermission: "HuubHuub uses the camera to take photos for Huub and to scan your invite QR code.",
+      },
+    ],
   ],
   experiments: { typedRoutes: true },
 }

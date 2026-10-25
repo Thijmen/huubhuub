@@ -187,7 +187,7 @@ const appApi =
         questions,
         access: appAccess,
         push: appPush,
-        voice: Boolean(transcriber),
+        transcriber,
         serverName: () => (bot.isInited() ? (bot.botInfo.first_name ?? "HuubHuub") : "HuubHuub"),
       })
     : undefined
