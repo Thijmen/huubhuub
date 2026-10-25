@@ -118,7 +118,8 @@ Milestones 1 to 4 are built (October 2026). Milestone 1 is released (huubhuub 0.
 2. **Voice and photos**: tap-to-record voice notes (the app records AAC, which Android can't do as OGG/Opus; the server decodes it with `faad` and sends PCM to Amazon Transcribe), photos from the camera or gallery.
 3. **Organise**: pin, archive, search (titles first, then message text).
 4. **Settings**: persona, memory (see, delete), scheduled tasks (see, pause, delete), spending against limits.
-5. **Later**: iOS via TestFlight, store listings, linking Telegram to an app-first person, share sheet.
+5. **Linking**: "Link Telegram" in the app's settings (a one-time `t.me/<bot>?start=link_…` link; the bot merges the two people and allowlists the Telegram user), and "Link with…" on the admin UI's People page for anyone who shows up twice.
+6. **Later**: iOS via TestFlight, store listings, share sheet.
 
 ## What Thijmen needs to do
 

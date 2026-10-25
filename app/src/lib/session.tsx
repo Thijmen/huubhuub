@@ -1,6 +1,6 @@
 import * as Device from "expo-device"
 import * as SecureStore from "expo-secure-store"
-import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { Me } from "@server/protocol"
 import { Api } from "./api"
 
@@ -18,12 +18,16 @@ interface SessionValue {
   api: Api | null
   signIn: (server: string, code: string) => Promise<void>
   signOut: () => Promise<void>
+  /** Ask the server who this phone is signed in as again, e.g. after linking Telegram. */
+  refreshMe: () => Promise<Me | undefined>
 }
 
 const SessionContext = createContext<SessionValue | null>(null)
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Stored | null | undefined>(undefined)
+  const current = useRef(session)
+  current.current = session
 
   useEffect(() => {
     SecureStore.getItemAsync(KEY)
@@ -38,20 +42,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo(() => (session ? new Api(session.server, session.token, () => void forget()) : null), [session?.server, session?.token, forget])
 
-  // Keep the name and features current; a 401 here signs the phone out.
-  useEffect(() => {
-    if (!api || !session) return
-    api
-      .me()
-      .then((me) => {
-        const next = { ...session, me }
-        setSession(next)
-        return SecureStore.setItemAsync(KEY, JSON.stringify(next))
-      })
-      .catch(() => {})
-    // Only when the sign-in changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshMe = useCallback(async () => {
+    if (!api) return undefined
+    const me = await api.me()
+    const signedIn = current.current
+    if (!signedIn) return me
+    const next = { ...signedIn, me }
+    setSession(next)
+    await SecureStore.setItemAsync(KEY, JSON.stringify(next)).catch(() => {})
+    return me
   }, [api])
+
+  // Keep the name and features current whenever the sign-in changes; a 401 here signs the phone out.
+  useEffect(() => {
+    void refreshMe().catch(() => {})
+  }, [refreshMe])
 
   const signIn = useCallback(async (server: string, code: string) => {
     const platform = process.env.EXPO_OS === "ios" ? "ios" : "android"
@@ -67,7 +72,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await forget()
   }, [api, forget])
 
-  const value = useMemo(() => ({ session, api, signIn, signOut }), [session, api, signIn, signOut])
+  const value = useMemo(() => ({ session, api, signIn, signOut, refreshMe }), [session, api, signIn, signOut, refreshMe])
   return <SessionContext value={value}>{children}</SessionContext>
 }
 

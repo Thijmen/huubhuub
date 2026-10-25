@@ -356,6 +356,20 @@ export function startAdmin(deps: Deps) {
         }),
       },
       "/api/people/:id/app-invite": { POST: api((req, d) => appInvite(d, userId(req))) },
+      "/api/people/:id/merge": {
+        POST: api(async (req, d) => {
+          const id = userId(req)
+          const other = Number((await read<{ with?: number }>(req)).with)
+          if (!Number.isSafeInteger(other) || other <= 0) throw new HttpError(400, "Pick who they are in the other place.")
+          // Allowlisted Telegram users who never wrote to the bot have no row yet.
+          for (const p of [id, other]) if (!d.store.person(p) && d.config.ALLOWED_USER_IDS.includes(p)) d.store.updatePerson(p, {})
+          try {
+            return { person: d.store.mergePeople(id, other) }
+          } catch (err) {
+            throw new HttpError(400, errorMessage(err))
+          }
+        }),
+      },
       "/api/app-devices/:id": {
         DELETE: api((req, d) => {
           d.store.deleteDevice(param(req, "id"))
