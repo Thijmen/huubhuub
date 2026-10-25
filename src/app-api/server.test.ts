@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Chats } from "../chats"
 import { loadConfig } from "../config"
 import type { Bridge, SessionEvent } from "../opencode"
+import { Personas } from "../personas"
 import { Questions } from "../question"
 import { SpendLimitError } from "../spend-limits"
 import { Store } from "../store"
@@ -21,6 +22,7 @@ const listeners = new Map<string, (e: SessionEvent) => void>()
 const sent: { sessionID: string; personId: number; text: string; images?: { mime: string; bytes: Uint8Array }[] }[] = []
 const recordings: { mime: string; bytes: number }[] = []
 const interrupted: string[] = []
+const ranNow: number[] = []
 let blocked = false
 
 beforeAll(() => {
@@ -71,6 +73,20 @@ beforeAll(() => {
       },
     },
     serverName: () => "Huub",
+    settings: {
+      personas: new Personas(store, () => "Europe/Amsterdam"),
+      limits: {
+        spend: async (userId: number) => ({
+          userId,
+          exempt: false,
+          day: { period: "day", spent: 0.42, limit: 2, from: 0, resetsAt: 100 },
+          month: { period: "month", spent: 3.5, limit: null, from: 0, resetsAt: 200 },
+        }),
+      },
+      scheduler: { running: () => false, runNow: (id: number) => void ranNow.push(id), reschedule: () => {} },
+      schedules: { delete: (s: { id: number }) => store.deleteSchedule(s.id) },
+      timeZone: () => "Europe/Amsterdam",
+    },
   })
   base = `http://127.0.0.1:${server.port}`
 })
@@ -249,5 +265,55 @@ describe("app API", () => {
     expect((await search("x")).results).toEqual([])
     // Other people's conversations stay out of it.
     expect((await search("ses_bram")).results).toEqual([])
+  })
+
+  test("persona and memory are the person's own", async () => {
+    const p = store.createAppPerson("Settings")
+    const other = store.createAppPerson("Other")
+    const token = await signIn(p.id)
+    const huub = store.createPersona("Huub", "## Identiteit\nJe bent **Huub**, een vriendelijke assistent.")
+    store.createPersona("Kok", "Je bent een chef-kok.")
+
+    const persona = (await (await call("/v1/persona", { token })).json()) as { personaId: number | null; personas: { id: number; name: string; summary: string }[] }
+    expect(persona.personaId).toBeNull()
+    expect(persona.personas.find((x) => x.id === huub.id)?.summary).toBe("Identiteit Je bent Huub, een vriendelijke assistent.")
+    expect(await (await call("/v1/persona", { method: "PUT", token, body: { personaId: huub.id } })).json()).toMatchObject({ personaId: huub.id })
+    expect(store.person(p.id)?.personaId).toBe(huub.id)
+    expect((await call("/v1/persona", { method: "PUT", token, body: { personaId: 9999 } })).status).toBe(400)
+
+    const added = (await (await call("/v1/memory", { method: "POST", token, body: { text: "Houdt van Texel" } })).json()) as { memories: { id: number; text: string; source: string }[] }
+    expect(added.memories).toEqual([expect.objectContaining({ text: "Houdt van Texel", source: "user" })])
+    expect(await (await call("/v1/memory/mode", { method: "PUT", token, body: { mode: "auto" } })).json()).toMatchObject({ mode: "auto", effectiveMode: "auto" })
+    expect((await call("/v1/memory/mode", { method: "PUT", token, body: { mode: "always" } })).status).toBe(400)
+    const theirs = store.addMemory(other.id, "Iets van een ander", "user")
+    expect((await call(`/v1/memory/${theirs.id}`, { method: "DELETE", token })).status).toBe(404)
+    expect(await (await call(`/v1/memory/${added.memories[0]!.id}`, { method: "DELETE", token })).json()).toMatchObject({ memories: [] })
+  })
+
+  test("scheduled tasks in the person's chats, and spending", async () => {
+    const p = store.createAppPerson("Planner")
+    const token = await signIn(p.id)
+    const mine = store.createSchedule({ chatId: store.appChatOf(p.id), name: "Boodschappen", kind: "interval", spec: "every 1d", prompt: "Wat moet ik halen?", model: null, agent: null, silent: false, nextAt: 5000 })
+    const background = store.createSchedule({ chatId: null, name: "Server", kind: "interval", spec: "every 1h", prompt: "x", model: null, agent: null, silent: false, nextAt: 1 })
+    const list = (await (await call("/v1/schedules", { token })).json()) as { timeZone: string; schedules: { id: number; name: string; nextAt: number | null; paused: boolean }[] }
+    expect(list.timeZone).toBe("Europe/Amsterdam")
+    expect(list.schedules.map((s) => s.id)).toEqual([mine.id])
+    expect(list.schedules[0]).toMatchObject({ name: "Boodschappen", prompt: "Wat moet ik halen?", description: expect.any(String), nextAt: 5000, paused: false })
+
+    expect(await (await call(`/v1/schedules/${mine.id}/paused`, { method: "PUT", token, body: { paused: true } })).json()).toMatchObject({ paused: true, nextAt: null })
+    expect((await call(`/v1/schedules/${mine.id}/run`, { method: "POST", token })).status).toBe(200)
+    expect(ranNow).toEqual([mine.id])
+    expect((await call(`/v1/schedules/${background.id}/run`, { method: "POST", token })).status).toBe(404)
+    expect((await call(`/v1/schedules/${mine.id}`, { method: "DELETE", token })).status).toBe(200)
+    expect(store.schedule(mine.id)).toBeUndefined()
+
+    expect(await (await call("/v1/spending", { token })).json()).toEqual({ exempt: false, day: { spent: 0.42, limit: 2, resetsAt: 100 }, month: { spent: 3.5, limit: null, resetsAt: 200 } })
+  })
+
+  // Last: it blocks pairing from this address for the rest of the file.
+  test("guessing invite codes gets slowed down", async () => {
+    let status = 0
+    for (let i = 0; i < 12 && status !== 429; i++) status = (await call("/v1/pair", { method: "POST", body: { code: `guess-${i}` } })).status
+    expect(status).toBe(429)
   })
 })

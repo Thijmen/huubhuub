@@ -189,6 +189,7 @@ const appApi =
         push: appPush,
         transcriber,
         serverName: () => (bot.isInited() ? (bot.botInfo.first_name ?? "HuubHuub") : "HuubHuub"),
+        settings: { personas, limits, scheduler, schedules, timeZone },
       })
     : undefined
 if (appApi) console.log(`App API on port ${appApi.port}${config.APP_PUBLIC_URL ? `, public at ${config.APP_PUBLIC_URL}` : " (set APP_PUBLIC_URL to invite people)"}`)

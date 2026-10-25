@@ -184,6 +184,83 @@ export type AppEvent =
   | { type: "refresh" }
   | { type: "question"; question: Question }
 
+// Settings
+
+export type MemoryMode = "off" | "explicit" | "auto"
+
+/** `GET /v1/persona`: who Huub is for this person. */
+export interface PersonaSettings {
+  /** Their own pick; null follows the server's default. */
+  personaId: number | null
+  defaultPersona: { id: number; name: string } | null
+  personas: { id: number; name: string; summary: string }[]
+}
+
+/** `PUT /v1/persona`. Applies from the next message. */
+export interface PersonaRequest {
+  personaId: number | null
+}
+
+/** `GET /v1/memory`: what Huub remembers about this person, and when it may remember things. */
+export interface MemorySettings {
+  /** Their own setting; null follows the server's default. */
+  mode: MemoryMode | null
+  effectiveMode: MemoryMode
+  defaultMode: MemoryMode
+  memories: { id: number; text: string; source: "agent" | "user" | "admin"; createdAt: number }[]
+  max: number
+}
+
+/** `PUT /v1/memory/mode`. */
+export interface MemoryModeRequest {
+  mode: MemoryMode | null
+}
+
+/** `POST /v1/memory`. */
+export interface NewMemoryRequest {
+  text: string
+}
+
+export interface ScheduleItem {
+  id: number
+  name: string
+  /** When it runs, in English, e.g. "every day at 08:00". */
+  description: string
+  type: "prompt" | "command"
+  /** What Huub is asked; empty for commands. */
+  prompt: string
+  nextAt: number | null
+  paused: boolean
+  running: boolean
+  createdBy: "user" | "agent"
+  lastRun: { status: "running" | "ok" | "failed" | "silent" | "skipped" | "missed"; at: number } | null
+}
+
+/** `GET /v1/schedules`: reminders and other scheduled tasks in this person's conversations. */
+export interface ScheduleList {
+  timeZone: string
+  schedules: ScheduleItem[]
+}
+
+/** `PUT /v1/schedules/:id/paused`. `POST /v1/schedules/:id/run` runs it now, `DELETE /v1/schedules/:id` deletes it. */
+export interface PauseRequest {
+  paused: boolean
+}
+
+export interface SpendingPeriod {
+  /** US dollars. */
+  spent: number
+  limit: number | null
+  resetsAt: number
+}
+
+/** `GET /v1/spending`: what this person spent today and this month, against their limits. */
+export interface Spending {
+  exempt: boolean
+  day: SpendingPeriod
+  month: SpendingPeriod
+}
+
 export interface ApiError {
   error: string
 }

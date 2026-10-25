@@ -47,7 +47,7 @@ function Root() {
         <Stack.Screen name="index" />
         <Stack.Screen name="pair" options={{ headerShown: false }} />
         <Stack.Screen name="c/[id]" options={{ title: "" }} />
-        <Stack.Screen name="settings" options={{ presentation: "modal" }} />
+        <Stack.Screen name="settings/index" />
       </Stack>
     </ThemeProvider>
   )

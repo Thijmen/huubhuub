@@ -9,6 +9,7 @@ import { AccessError, type AppAccess } from "./access"
 import { AppEvents, previewOf, toAppMessages } from "./events"
 import { invitePage } from "./invite-page"
 import { ConversationSearch } from "./search"
+import { AppSettings, SettingsError, type SettingsDeps } from "./settings"
 import {
   APP_API_VERSION,
   type AppEvent,
@@ -22,6 +23,10 @@ import {
   type PairResponse,
   type PushTokenRequest,
   type ImageUpload,
+  type MemoryModeRequest,
+  type NewMemoryRequest,
+  type PauseRequest,
+  type PersonaRequest,
   type QuestionRequest,
   type SearchResponse,
   type SendRequest,
@@ -54,6 +59,8 @@ export interface AppDeps {
   transcriber?: Pick<Transcriber, "transcribeRecording">
   /** The Telegram bot's name, shown in the app. */
   serverName: () => string
+  /** For the settings screens: persona, memory, scheduled tasks, spending. */
+  settings: Omit<SettingsDeps, "store">
 }
 
 class HttpError extends Error {
@@ -74,6 +81,7 @@ type Handler = (req: Req, device: AppDevice, server: Bun.Server<undefined>) => P
  */
 export function startAppApi(d: AppDeps) {
   const pairs = new PairLimiter()
+  const settings = new AppSettings({ ...d.settings, store: d.store })
   const finder = new ConversationSearch((sessionID, cursor) =>
     d.bridge.host.message.list({ sessionID, order: "desc", limit: 200, ...(cursor ? { cursor } : {}) }),
   )
@@ -95,12 +103,18 @@ export function startAppApi(d: AppDeps) {
       "/v1/pair": {
         POST: (req, server) =>
           run(req, async (): Promise<PairResponse> => {
-            if (!pairs.allow(clientIp(req, server))) throw new HttpError(429, "Too many attempts. Try again in a few minutes.")
+            const ip = clientIp(req, server)
+            if (pairs.blocked(ip)) throw new HttpError(429, "Too many attempts. Try again in a few minutes.")
             const body = await read<PairRequest>(req)
             const name = typeof body.deviceName === "string" ? body.deviceName.trim().slice(0, 60) || null : null
             const platform = body.platform === "android" || body.platform === "ios" || body.platform === "web" ? body.platform : null
-            const { token, device } = d.access.pair(String(body.code ?? "").trim(), name, platform)
-            return { token, me: me(d, device) }
+            try {
+              const { token, device } = d.access.pair(String(body.code ?? "").trim(), name, platform)
+              return { token, me: me(d, device) }
+            } catch (err) {
+              pairs.failed(ip)
+              throw err
+            }
           }),
       },
       "/v1/me": { GET: authed((_, device) => me(d, device)) },
@@ -199,6 +213,38 @@ export function startAppApi(d: AppDeps) {
           return { text }
         }),
       },
+      "/v1/persona": {
+        GET: authed((_, device) => settings.persona(device.personId)),
+        PUT: authed(async (req, device) => settings.setPersona(device.personId, (await read<PersonaRequest>(req)).personaId)),
+      },
+      "/v1/memory": {
+        GET: authed((_, device) => settings.memory(device.personId)),
+        POST: authed(async (req, device) => settings.addMemory(device.personId, (await read<NewMemoryRequest>(req)).text)),
+        DELETE: authed((_, device) => settings.forgetAll(device.personId)),
+      },
+      "/v1/memory/mode": {
+        PUT: authed(async (req, device) => settings.setMemoryMode(device.personId, (await read<MemoryModeRequest>(req)).mode)),
+      },
+      "/v1/memory/:id": {
+        DELETE: authed((req, device) => settings.forget(device.personId, numberParam(req))),
+      },
+      "/v1/schedules": {
+        GET: authed((_, device) => settings.schedules(device.personId)),
+      },
+      "/v1/schedules/:id": {
+        DELETE: authed((req, device) => {
+          settings.deleteSchedule(device.personId, numberParam(req))
+        }),
+      },
+      "/v1/schedules/:id/paused": {
+        PUT: authed(async (req, device) => settings.setPaused(device.personId, numberParam(req), (await read<PauseRequest>(req)).paused)),
+      },
+      "/v1/schedules/:id/run": {
+        POST: authed((req, device) => settings.runNow(device.personId, numberParam(req))),
+      },
+      "/v1/spending": {
+        GET: authed((_, device) => settings.spending(device.personId)),
+      },
       "/v1/conversations/:id/stop": {
         POST: authed(async (req, device) => {
           const thread = owned(d, device, req)
@@ -230,7 +276,15 @@ async function run(req: Request, fn: () => Promise<unknown> | unknown): Promise<
     return result instanceof Response ? result : json(result ?? { ok: true })
   } catch (err) {
     const status =
-      err instanceof HttpError ? err.status : err instanceof SpendLimitError ? 402 : err instanceof AccessError ? 403 : err instanceof UserError ? 400 : 500
+      err instanceof HttpError || err instanceof SettingsError
+        ? err.status
+        : err instanceof SpendLimitError
+          ? 402
+          : err instanceof AccessError
+            ? 403
+            : err instanceof UserError
+              ? 400
+              : 500
     if (status === 500) console.error(`app ${req.method} ${new URL(req.url).pathname} failed`, err)
     return json({ error: status === 500 ? "Something went wrong on the server." : (err as Error).message }, status)
   }
@@ -245,6 +299,12 @@ function me(d: AppDeps, device: AppDevice): Me {
     apiVersion: APP_API_VERSION,
     features: { voice: Boolean(d.transcriber), telegram: person?.telegramId != null },
   }
+}
+
+function numberParam(req: Req): number {
+  const n = Number((req.params as Record<string, string>).id)
+  if (!Number.isSafeInteger(n) || n <= 0) throw new HttpError(404, "Not found.")
+  return n
 }
 
 /** The conversation in the URL, if it's one of this person's private conversations. */
@@ -368,14 +428,17 @@ function clientIp(req: Request, server: Bun.Server<undefined>): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || server.requestIP(req)?.address || "unknown"
 }
 
+/** Slows down guessing invite codes: too many failed attempts, from one address or in total, and pairing waits. */
 class PairLimiter {
-  private hits: { ip: string; at: number }[] = []
+  private failures: { ip: string; at: number }[] = []
 
-  allow(ip: string, now = Date.now()): boolean {
-    this.hits = this.hits.filter((h) => h.at > now - PAIR_WINDOW_MS)
-    if (this.hits.length >= PAIR_TOTAL || this.hits.filter((h) => h.ip === ip).length >= PAIR_PER_IP) return false
-    this.hits.push({ ip, at: now })
-    return true
+  blocked(ip: string, now = Date.now()): boolean {
+    this.failures = this.failures.filter((h) => h.at > now - PAIR_WINDOW_MS)
+    return this.failures.length >= PAIR_TOTAL || this.failures.filter((h) => h.ip === ip).length >= PAIR_PER_IP
+  }
+
+  failed(ip: string, now = Date.now()): void {
+    this.failures.push({ ip, at: now })
   }
 }
 

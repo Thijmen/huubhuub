@@ -7,6 +7,12 @@ import type {
   ConversationSummary,
   ImageUpload,
   Me,
+  MemoryMode,
+  MemorySettings,
+  PersonaSettings,
+  ScheduleItem,
+  ScheduleList,
+  Spending,
   PairResponse,
   Question,
   QuestionAction,
@@ -60,6 +66,18 @@ export class Api {
   stop = (id: string) => this.request<void>("POST", `/v1/conversations/${encodeURIComponent(id)}/stop`)
   answer = (id: string, formID: string, action: QuestionAction) =>
     this.request<Question | null>("POST", `/v1/conversations/${encodeURIComponent(id)}/question`, { formID, action })
+  persona = () => this.request<PersonaSettings>("GET", "/v1/persona")
+  setPersona = (personaId: number | null) => this.request<PersonaSettings>("PUT", "/v1/persona", { personaId })
+  memory = () => this.request<MemorySettings>("GET", "/v1/memory")
+  setMemoryMode = (mode: MemoryMode | null) => this.request<MemorySettings>("PUT", "/v1/memory/mode", { mode })
+  remember = (text: string) => this.request<MemorySettings>("POST", "/v1/memory", { text })
+  forget = (id: number) => this.request<MemorySettings>("DELETE", `/v1/memory/${id}`)
+  forgetAll = () => this.request<MemorySettings>("DELETE", "/v1/memory")
+  schedules = () => this.request<ScheduleList>("GET", "/v1/schedules")
+  setPaused = (id: number, paused: boolean) => this.request<ScheduleItem>("PUT", `/v1/schedules/${id}/paused`, { paused })
+  runNow = (id: number) => this.request<ScheduleItem>("POST", `/v1/schedules/${id}/run`)
+  deleteSchedule = (id: number) => this.request<void>("DELETE", `/v1/schedules/${id}`)
+  spending = () => this.request<Spending>("GET", "/v1/spending")
   setPushToken = (token: string | null) => this.request<void>("PUT", "/v1/devices/current/push", { token })
   signOut = () => this.request<void>("DELETE", "/v1/devices/current")
 
