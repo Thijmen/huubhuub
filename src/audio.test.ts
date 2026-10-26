@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { AudioError, decodeAac, parseWav } from "./audio"
+import { AudioError, decodeAac, mp4ToAdts, parseWav } from "./audio"
 
 function wav(channels: number, rate: number, samples: number[], streamed = false): Uint8Array {
   const data = new Uint8Array(samples.length * 2)
@@ -50,20 +50,71 @@ describe("parseWav", () => {
   })
 })
 
-const hasTools = Bun.which("ffmpeg") && Bun.which("faad")
+/** Three seconds of a 440 Hz tone, AAC at 16 kHz mono, written by Android's own MP4 writer (64-bit `mdat`, `co64`). */
+const android = () => new Uint8Array(readFileSync(join(import.meta.dir, "testdata", "android-voice.m4a")))
+
+/** The ADTS frames in a stream: [profile, rate index, channels, frame length]. */
+function adtsFrames(adts: Uint8Array) {
+  const frames: number[][] = []
+  for (let at = 0; at < adts.length; ) {
+    expect(adts[at]).toBe(0xff)
+    expect(adts[at + 1]).toBe(0xf1)
+    const length = ((adts[at + 3]! & 3) << 11) | (adts[at + 4]! << 3) | (adts[at + 5]! >> 5)
+    frames.push([adts[at + 2]! >> 6, (adts[at + 2]! >> 2) & 15, ((adts[at + 2]! & 1) << 2) | (adts[at + 3]! >> 6), length])
+    at += length
+  }
+  return frames
+}
+
+describe("mp4ToAdts", () => {
+  test("takes the AAC frames out of an Android recording", () => {
+    const frames = adtsFrames(mp4ToAdts(android()))
+    // About 3 s of 1024-sample frames at 16 kHz.
+    expect(frames.length).toBeGreaterThan(45)
+    expect(frames.length).toBeLessThan(52)
+    // AAC-LC, 16 kHz (index 8), mono.
+    for (const [profile, rate, channels] of frames) expect([profile, rate, channels]).toEqual([1, 8, 1])
+  })
+
+  test("a recording without its index, or not an MP4, is a clear error", () => {
+    const mp4 = android()
+    expect(() => mp4ToAdts(mp4.subarray(0, 24))).toThrow("incomplete")
+    expect(() => mp4ToAdts(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))).toThrow(AudioError)
+  })
+})
+
+const hasFaad = Boolean(Bun.which("faad"))
+const hasTools = Bun.which("ffmpeg") && hasFaad
+
+/** Seconds of audio, and the pitch from zero crossings in the middle half (the edges are quiet and noisy). */
+function measure(pcm: { data: Uint8Array; sampleRate: number }) {
+  const s = samples(pcm.data)
+  const middle = s.slice(s.length / 4, (s.length * 3) / 4)
+  let crossings = 0
+  for (let i = 1; i < middle.length; i++) if (middle[i - 1]! < 0 !== middle[i]! < 0) crossings++
+  return { seconds: s.length / pcm.sampleRate, hz: crossings / 2 / (middle.length / pcm.sampleRate) }
+}
 
 describe("decodeAac", () => {
-  test.skipIf(!hasTools)("decodes what the phone records (AAC in MP4)", async () => {
+  test.skipIf(!hasFaad)("decodes an Android recording, which faad can't read as MP4", async () => {
+    const { seconds, hz } = measure(await decodeAac(android()))
+    expect(seconds).toBeGreaterThan(2.9)
+    expect(seconds).toBeLessThan(3.3)
+    expect(hz).toBeGreaterThan(420)
+    expect(hz).toBeLessThan(460)
+  })
+
+  test.skipIf(!hasTools)("decodes AAC in MP4 as ffmpeg writes it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aac-"))
     try {
       const file = join(dir, "voice.m4a")
       const ffmpeg = Bun.spawnSync(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-ac", "1", "-ar", "16000", "-c:a", "aac", file])
       expect(ffmpeg.exitCode).toBe(0)
-      const pcm = await decodeAac(new Uint8Array(readFileSync(file)))
-      expect(pcm.sampleRate).toBe(16000)
-      // About a second of 16-bit mono.
-      expect(pcm.data.length).toBeGreaterThan(28_000)
-      expect(pcm.data.length).toBeLessThan(40_000)
+      const { seconds, hz } = measure(await decodeAac(new Uint8Array(readFileSync(file))))
+      expect(seconds).toBeGreaterThan(0.95)
+      expect(seconds).toBeLessThan(1.2)
+      expect(hz).toBeGreaterThan(420)
+      expect(hz).toBeLessThan(460)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
