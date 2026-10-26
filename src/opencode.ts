@@ -33,6 +33,7 @@ export class Bridge {
   private global = new Set<Listener>()
   private resync = new Set<() => void>()
   private abort = new AbortController()
+  private mcpRestore?: Promise<void>
   readonly host: Host
   private constructor(
     readonly server: OpenCodeServer,
@@ -107,14 +108,43 @@ export class Bridge {
     }
   }
 
+  /**
+   * OpenCode can rebuild a location without restarting (config reload, e.g. when a watched skill or plugin
+   * directory changes), which drops MCP servers added at runtime. Replay them when that happens. With
+   * `onlyIfMissing`, first check whether anything was actually lost (used after the event stream reconnects,
+   * when a `location.shutdown` may have been missed).
+   */
+  private restoreMcpOverrides(onlyIfMissing = false): void {
+    if (this.mcpRestore || this.server.status !== "running") return
+    this.mcpRestore = (async () => {
+      // Let the replacement location finish building before adding servers to it.
+      await Bun.sleep(500)
+      await this.warmup()
+      if (onlyIfMissing && !(await this.mcpOverridesLost())) return
+      console.log("OpenCode reloaded its location; restoring MCP servers from the admin UI")
+      await this.applyMcpOverrides()
+    })()
+      .catch((err) => console.error("MCP servers could not be restored", err))
+      .finally(() => (this.mcpRestore = undefined))
+  }
+
+  private async mcpOverridesLost(): Promise<boolean> {
+    const present = new Set((await this.host.mcp.list(this.location)).data.map((s) => s.name))
+    return this.store.mcpServers().some(({ name, config }) => (config === null) === present.has(name))
+  }
+
   private async pump(): Promise<void> {
     let reconnect = false
     while (!this.abort.signal.aborted) {
       try {
         for await (const event of this.host.event.subscribe({ signal: this.abort.signal })) {
           // Events emitted while the stream was down are not replayed; let views catch up from storage.
-          if (reconnect) for (const fn of this.resync) fn()
+          if (reconnect) {
+            for (const fn of this.resync) fn()
+            this.restoreMcpOverrides(true)
+          }
           reconnect = false
+          if (event.type === "location.shutdown") this.restoreMcpOverrides()
           const sessionID = sessionOf(event)
           if (!sessionID) continue
           for (const fn of [...this.global, ...(this.listeners.get(sessionID) ?? [])]) {
