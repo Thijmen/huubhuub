@@ -1,5 +1,13 @@
 # huubhuub
 
+## 0.5.2
+
+### Patch Changes
+
+- [#52](https://github.com/Thijmen/huubhuub/pull/52) [`3c44ad2`](https://github.com/Thijmen/huubhuub/commit/3c44ad2a9a4216f70195d8f09b7df52a3d204aa6) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix MCP servers added in the admin UI disappearing after a while; they are now restored whenever OpenCode reloads its configuration.
+
+- [#51](https://github.com/Thijmen/huubhuub/pull/51) [`dd3c665`](https://github.com/Thijmen/huubhuub/commit/dd3c665eab0c690317671431cca42ac1b4c54c77) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix voice notes recorded in the Android app failing with "The decoded audio isn't a WAV file".
+
 ## 0.5.1
 
 ### Patch Changes
