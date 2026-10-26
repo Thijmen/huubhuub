@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.5.3
+
+### Patch Changes
+
+- [#54](https://github.com/Thijmen/huubhuub/pull/54) [`dfb6387`](https://github.com/Thijmen/huubhuub/commit/dfb6387223d1ab691742a097d5a6ab75cf02495d) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native-worklets to v0.13.1
+
 ## 0.5.2
 
 ### Patch Changes
