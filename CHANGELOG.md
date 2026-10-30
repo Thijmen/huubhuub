@@ -1,5 +1,17 @@
 # huubhuub
 
+## 0.5.4
+
+### Patch Changes
+
+- [#56](https://github.com/Thijmen/huubhuub/pull/56) [`3bcfde6`](https://github.com/Thijmen/huubhuub/commit/3bcfde65b3b57e5d293bc1aef78cc579d9f0e22c) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/client to v2.2.2
+
+- [#58](https://github.com/Thijmen/huubhuub/pull/58) [`e1df258`](https://github.com/Thijmen/huubhuub/commit/e1df258576ff31eb4a05312712c107170e3131a2) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/cli to v2.2.2
+
+- [#59](https://github.com/Thijmen/huubhuub/pull/59) [`8d4814a`](https://github.com/Thijmen/huubhuub/commit/8d4814a611719dd65ae3828da399bcff31df0211) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native to v0.88.1
+
+- [#60](https://github.com/Thijmen/huubhuub/pull/60) [`d2ab07c`](https://github.com/Thijmen/huubhuub/commit/d2ab07c2b649268544f4cbfc58f9e9d1b0e508fd) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native-safe-area-context to ~5.11.0
+
 ## 0.5.3
 
 ### Patch Changes
