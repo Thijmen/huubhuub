@@ -1,5 +1,13 @@
 # huubhuub
 
+## 0.5.5
+
+### Patch Changes
+
+- [#63](https://github.com/Thijmen/huubhuub/pull/63) [`95b091a`](https://github.com/Thijmen/huubhuub/commit/95b091a85109e631fbc520ba19c22bec0a846c45) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/cli to v2.2.5
+
+- [#64](https://github.com/Thijmen/huubhuub/pull/64) [`d4d24cc`](https://github.com/Thijmen/huubhuub/commit/d4d24cce760b7af0030db6c5c8527611dcc283a9) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/client to v2.2.5
+
 ## 0.5.4
 
 ### Patch Changes
