@@ -47,7 +47,9 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
   const { busy, run } = useAction()
   const [draft, setDraft] = useState("")
   const [preview, setPreview] = useState<string>()
-  const name = p.name || (p.username ? `@${p.username}` : `User ${p.telegramId ?? p.id}`)
+  const [linking, setLinking] = useState(false)
+  const name = personName(p)
+  const linkable = data.people.some((o) => canLink(p, o))
   const defaultPersona = data.personas.find((x) => x.id === data.defaultPersonaId)
   const defaultMode = MEMORY_MODE_OPTIONS.find((o) => o.value === data.defaultMemoryMode)!
   const mode = p.memoryMode ?? "default"
@@ -67,16 +69,22 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
         <div className="persona-title">
           <Initials name={name} seed={String(p.id)} />
           <strong>{name}</strong>
-          {p.username && p.name && <span className="muted small">@{p.username}</span>}
-          {p.telegramId !== null && <span className="mono muted small">{p.telegramId}</span>}
-          {p.telegramId === null && <Badge>app only</Badge>}
+          <Identities person={p} />
           {p.telegramId !== null && !p.allowed && <Badge tone="warn">not on the allowlist</Badge>}
           <span className="muted small">{p.seenAt ? `last message ${relTime(p.seenAt)}` : "hasn't written yet"}</span>
         </div>
-        <Button size="sm" variant="ghost" busy={busy === "prompt"} onClick={showPrompt}>
-          Preview prompt
-        </Button>
+        <div className="row-end">
+          {linkable && (
+            <Button size="sm" variant="ghost" onClick={() => setLinking(true)}>
+              Link with…
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" busy={busy === "prompt"} onClick={showPrompt}>
+            Preview prompt
+          </Button>
+        </div>
       </div>
+      {linking && <LinkPeople person={p} people={data.people} onClose={() => setLinking(false)} reload={reload} />}
 
       <div className="grid-2">
         <Field label="Persona">
@@ -144,6 +152,84 @@ function PersonCard({ person: p, data, reload }: { person: PersonInfo; data: Peo
         </Modal>
       )}
     </article>
+  )
+}
+
+function personName(p: PersonInfo): string {
+  return p.name || (p.username ? `@${p.username}` : `User ${p.telegramId ?? p.id}`)
+}
+
+/** Two people can become one unless both have a Telegram account. */
+function canLink(a: PersonInfo, b: PersonInfo): boolean {
+  return a.id !== b.id && (a.telegramId === null || b.telegramId === null)
+}
+
+/** Where someone uses the bot: Telegram, the app, or both. */
+function Identities({ person: p }: { person: PersonInfo }) {
+  const phones = p.devices.length
+  return (
+    <>
+      {p.telegramId !== null && (
+        <Badge tone="accent">
+          Telegram {p.username ? `@${p.username} · ` : ""}
+          <span className="mono">{p.telegramId}</span>
+        </Badge>
+      )}
+      {(p.appChatId !== null || phones > 0 || p.telegramId === null) && (
+        <Badge tone={p.telegramId === null ? "neutral" : "accent"}>
+          {p.telegramId === null ? "App only" : "App"}
+          {` · ${phones} phone${phones === 1 ? "" : "s"}`}
+        </Badge>
+      )}
+    </>
+  )
+}
+
+/** Make two people one: someone who uses Telegram and the app as two separate people. */
+function LinkPeople({ person: p, people, onClose, reload }: { person: PersonInfo; people: PersonInfo[]; onClose: () => void; reload: () => Promise<void> }) {
+  const { busy, run } = useAction()
+  const candidates = people.filter((o) => canLink(p, o))
+  const [otherId, setOtherId] = useState<number>()
+  const other = candidates.find((o) => o.id === otherId)
+  // The same rule as the server: whoever has Telegram stays, otherwise the older one.
+  const keep = other && (p.telegramId !== null || (other.telegramId === null && p.id < other.id) ? p : other)
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (other) void run("link", () => api("POST", `/api/people/${p.id}/merge`, { with: other.id }).then(reload).then(onClose), "Linked")
+  }
+  return (
+    <Modal
+      title={`Link ${personName(p)} with…`}
+      subtitle="For someone who shows up twice, e.g. once from Telegram and once from the app. They become one person: their conversations, memories, phones and settings are combined. This can't be undone."
+      onClose={onClose}
+    >
+      <form className="stack" onSubmit={submit}>
+        <Field label="Is the same person as">
+          <select className="input" autoFocus value={otherId ?? ""} onChange={(e) => setOtherId(e.target.value ? Number(e.target.value) : undefined)}>
+            <option value="">Pick someone</option>
+            {candidates.map((o) => (
+              <option key={o.id} value={o.id}>
+                {personName(o)} ({o.telegramId !== null ? `Telegram ${o.username ? `@${o.username}` : o.telegramId}` : `app only, ${o.devices.length} phone${o.devices.length === 1 ? "" : "s"}`})
+              </option>
+            ))}
+          </select>
+        </Field>
+        {keep && other && (
+          <p className="muted small">
+            {personName(keep)} stays; {personName(keep === p ? other : p)} is folded in. Where both have a persona, memory setting or spending limit, {personName(keep)}'s is kept. Phones stay signed in.
+          </p>
+        )}
+        <p className="muted small">People can also do this themselves: Settings → Link Telegram in the app.</p>
+        <div className="row-end">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="danger" busy={busy === "link"} disabled={!other}>
+            Link them
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

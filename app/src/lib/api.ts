@@ -17,6 +17,7 @@ import type {
   Question,
   QuestionAction,
   SearchResponse,
+  TelegramLinkResponse,
   TranscribeResponse,
 } from "@server/protocol"
 import { t } from "./i18n"
@@ -53,6 +54,7 @@ export class Api {
   }
 
   me = () => this.request<Me>("GET", "/v1/me")
+  linkTelegram = () => this.request<TelegramLinkResponse>("POST", "/v1/telegram/link")
   conversations = (archived = false) => this.request<ConversationList>("GET", `/v1/conversations${archived ? "?archived=1" : ""}`)
   update = (id: string, patch: ConversationPatch) => this.request<ConversationSummary>("PATCH", `/v1/conversations/${encodeURIComponent(id)}`, patch)
   search = (q: string) => this.request<SearchResponse>("GET", `/v1/search?q=${encodeURIComponent(q)}`)

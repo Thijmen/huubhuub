@@ -10,9 +10,10 @@ import { Questions } from "../question"
 import { SpendLimitError } from "../spend-limits"
 import { Store } from "../store"
 import { AppAccess } from "./access"
-import type { AppEvent, ConversationList, ConversationPage, Me, PairResponse } from "./protocol"
+import type { AppEvent, ConversationList, ConversationPage, Me, PairResponse, TelegramLinkResponse } from "./protocol"
 import { AppPush } from "./push"
 import { startAppApi } from "./server"
+import { LINK_START, TelegramLinks } from "./telegram-link"
 
 let dir: string
 let store: Store
@@ -24,6 +25,7 @@ const recordings: { mime: string; bytes: number }[] = []
 const interrupted: string[] = []
 const ranNow: number[] = []
 let blocked = false
+let links: TelegramLinks
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "app-api-"))
@@ -88,6 +90,7 @@ beforeAll(() => {
       schedules: { delete: (s: { id: number }) => store.deleteSchedule(s.id) },
       timeZone: () => "Europe/Amsterdam",
     },
+    telegramLinks: (links = new TelegramLinks({ store, botUsername: () => "HuubBot", allow: () => {} })),
   })
   base = `http://127.0.0.1:${server.port}`
 })
@@ -166,7 +169,7 @@ describe("app API", () => {
     store.set({ chatId: 43, threadId: 9 }, "ses_busy")
     const token = await signIn(43)
     const list = (await (await call("/v1/conversations", { token })).json()) as ConversationList
-    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", telegram: true, pinned: false, archived: false, cost: 0 }])
+    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", from: "assistant", asking: false, telegram: true, pinned: false, archived: false, cost: 0 }])
   })
 
   test("live events in the app's format", async () => {
@@ -310,6 +313,27 @@ describe("app API", () => {
     expect(store.schedule(mine.id)).toBeUndefined()
 
     expect(await (await call("/v1/spending", { token })).json()).toEqual({ exempt: false, day: { spent: 0.42, limit: 2, resetsAt: 100 }, month: { spent: 3.5, limit: null, resetsAt: 200 } })
+  })
+
+  test("linking Telegram from the app", async () => {
+    const app = store.createAppPerson("Linker")
+    const token = await signIn(app.id)
+    expect((await call("/v1/telegram/link", { method: "POST" })).status).toBe(401)
+
+    const res = await call("/v1/telegram/link", { method: "POST", token })
+    expect(res.status).toBe(200)
+    const { url, expiresAt } = (await res.json()) as TelegramLinkResponse
+    expect(url).toMatch(/^https:\/\/t\.me\/HuubBot\?start=link_[A-Za-z0-9_-]+$/)
+    expect(expiresAt).toBeGreaterThan(Date.now())
+
+    const code = LINK_START.exec(`/start ${new URL(url).searchParams.get("start")}`)![1]!
+    links.redeem(code, { id: 4242, name: "Linker", username: "linker" })
+    const me = (await (await call("/v1/me", { token })).json()) as Me
+    expect(me).toMatchObject({ person: { id: 4242, name: "Linker", telegramUsername: "linker" }, features: { telegram: true } })
+
+    const again = await call("/v1/telegram/link", { method: "POST", token })
+    expect(again.status).toBe(409)
+    expect(((await again.json()) as { error: string }).error).toContain("already linked")
   })
 
   // Last: it blocks pairing from this address for the rest of the file.

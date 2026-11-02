@@ -1,13 +1,14 @@
 import * as Application from "expo-application"
 import * as Notifications from "expo-notifications"
-import { router, Stack } from "expo-router"
+import { router, Stack, useFocusEffect } from "expo-router"
 import * as Updates from "expo-updates"
-import { useEffect, useState } from "react"
-import { Alert, ScrollView, Text, View } from "react-native"
-import { HuubAvatar } from "@/components/art"
+import { useCallback, useEffect, useState } from "react"
+import { Alert, Linking, ScrollView, Text, View } from "react-native"
+import { Halo } from "@/components/art"
 import { ActionRow, InfoRow, LinkRow, Section } from "@/components/settings-ui"
 import { t } from "@/lib/i18n"
 import { useSession } from "@/lib/session"
+import { useAppUpdate } from "@/lib/updates"
 import { font, space, useTheme } from "@/theme"
 
 export default function SettingsScreen() {
@@ -15,6 +16,8 @@ export default function SettingsScreen() {
   const { session, signOut } = useSession()
   const [push, setPush] = useState<boolean | null>(null)
   const [updateNote, setUpdateNote] = useState<string | null>(null)
+  const telegram = useTelegramLink()
+  const { apk } = useAppUpdate()
 
   useEffect(() => {
     void Notifications.getPermissionsAsync().then((p) => setPush(p.status === "granted"))
@@ -45,16 +48,29 @@ export default function SettingsScreen() {
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: space.lg, gap: space.xl }}>
       <Stack.Screen options={{ title: t("settings") }} />
       <View style={{ alignItems: "center", gap: space.sm, paddingTop: space.md }}>
-        <HuubAvatar size={64} />
-        <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.title }}>{session.me.person.name ?? t("appName")}</Text>
+        <Halo size={76} />
+        <Text style={{ color: c.text, fontFamily: font.rounded, fontSize: font.size.title, lineHeight: font.lineHeight.title, marginTop: space.xs }}>{session.me.person.name ?? t("appName")}</Text>
       </View>
       <Section title={t("you")}>
-        <LinkRow href="/settings/persona" emoji="🎭" label={t("persona")} detail={t("personaHint")} />
-        <LinkRow href="/settings/memory" emoji="🧠" label={t("memory")} detail={t("memoryHint")} />
-        <LinkRow href="/settings/reminders" emoji="⏰" label={t("reminders")} detail={t("remindersHint")} />
-        <LinkRow href="/settings/spending" emoji="💶" label={t("spending")} last />
+        <LinkRow href="/settings/persona" emoji="🎭" tint={4} label={t("persona")} detail={t("personaShort")} />
+        <LinkRow href="/settings/memory" emoji="🧠" tint={0} label={t("memory")} detail={t("memoryShort")} />
+        <LinkRow href="/settings/reminders" emoji="⏰" tint={1} label={t("reminders")} detail={t("remindersShort")} />
+        <LinkRow href="/settings/spending" emoji="💶" tint={2} label={t("spending")} detail={t("spendingShort")} last />
       </Section>
+      <Section title={t("telegram")}>
+        {telegram.linked ? (
+          <LinkRow emoji="✈️" tint={1} label={t("telegramLinked")} detail={session.me.person.telegramUsername ? `@${session.me.person.telegramUsername}` : undefined} done last />
+        ) : (
+          <LinkRow emoji="✈️" tint={1} label={telegram.waiting ? t("telegramLinkAgain") : t("telegramLink")} detail={t("telegramHint")} onPress={() => void telegram.link()} last />
+        )}
+      </Section>
+      {!!telegram.note && (
+        <Text selectable style={{ color: c.textMuted, fontSize: 13, lineHeight: 18, textAlign: "center", marginTop: -space.md, paddingHorizontal: space.lg }}>
+          {telegram.note}
+        </Text>
+      )}
       <Section title={t("appName")}>
+        {apk && <LinkRow emoji="📲" tint={0} label={t("apkRow")} detail={t("apkDetail", { version: apk.version, code: apk.versionCode })} onPress={() => void Linking.openURL(apk.url)} />}
         <InfoRow label={t("server")} value={session.server.replace(/^https?:\/\//, "")} />
         <InfoRow label={t("device")} value={session.me.device.name ?? "—"} />
         <InfoRow label={t("notifications")} value={push === null ? "…" : push ? t("notificationsOn") : t("notificationsOff")} />
@@ -71,4 +87,46 @@ export default function SettingsScreen() {
       </Section>
     </ScrollView>
   )
+}
+
+/**
+ * "Link Telegram": opens the bot in Telegram with a one-time code, then checks every few seconds (while this
+ * screen is open) whether the person pressed Start there.
+ */
+function useTelegramLink() {
+  const { session, api, refreshMe } = useSession()
+  const linked = session?.me.features.telegram ?? false
+  const [until, setUntil] = useState<number | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!until || linked) return
+      const timer = setInterval(() => {
+        if (Date.now() > until) return setUntil(null)
+        void refreshMe().catch(() => {})
+      }, 2000)
+      return () => clearInterval(timer)
+    }, [until, linked, refreshMe]),
+  )
+
+  useEffect(() => {
+    if (!linked || !until) return
+    setUntil(null)
+    setNote(t("telegramLinkedNote"))
+  }, [linked, until])
+
+  const link = async () => {
+    if (!api) return
+    try {
+      const { url, expiresAt } = await api.linkTelegram()
+      setUntil(expiresAt)
+      setNote(t("telegramLinkWaiting"))
+      await Linking.openURL(url)
+    } catch (err) {
+      setNote((err as Error).message)
+    }
+  }
+
+  return { linked, waiting: until !== null, note, link }
 }

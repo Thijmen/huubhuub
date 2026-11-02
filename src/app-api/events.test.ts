@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionEvent } from "../opencode"
-import { AppEvents, plainText, previewOf, toAppMessages } from "./events"
+import { AppEvents, lastSaid, plainText, previewOf, toAppMessages } from "./events"
 
 const ev = (type: string, data: Record<string, unknown>) => ({ type, data: { sessionID: "s", ...data } }) as unknown as SessionEvent
 
@@ -8,7 +8,7 @@ describe("toAppMessages", () => {
   test("keeps what was said and drops bookkeeping", () => {
     const messages = [
       { id: "u1", type: "user", text: "Plan een weekendje weg", time: { created: 1 }, files: [{ name: "kaart.png", mime: "image/png", data: "AAAA" }, { name: "x.txt", mime: "text/plain", data: "eA==" }] },
-      { id: "a1", type: "assistant", time: { created: 2, completed: 3 }, content: [{ type: "tool", name: "websearch" }] },
+      { id: "a1", type: "assistant", time: { created: 2, completed: 3 }, content: [{ type: "tool", id: "t1", name: "websearch", state: { status: "completed", input: { query: "Texel dit weekend" } } }, { type: "tool", id: "t2", name: "question", state: { status: "completed", input: {} } }, { type: "tool", id: "t3", name: "schedule_create", state: { status: "completed", input: { name: "Sterrenwacht   boeken", when: "at 09:00" } } }, { type: "tool", id: "t4", name: "memory_save", state: { status: "error", input: { text: "Houdt van Texel" } } }] },
       { id: "a2", type: "assistant", time: { created: 4, completed: 5 }, content: [{ type: "text", text: "## Texel" }, { type: "reasoning", text: "hmm" }, { type: "text", text: "Neem de boot." }] },
       { id: "m", type: "model-switched", time: { created: 6 } },
       { id: "a3", type: "assistant", time: { created: 7 }, content: [] },
@@ -16,6 +16,12 @@ describe("toAppMessages", () => {
     ]
     expect(toAppMessages(messages as never)).toEqual([
       { id: "u1", role: "user", createdAt: 1, text: "Plan een weekendje weg", images: [{ name: "kaart.png", uri: "data:image/png;base64,AAAA" }] },
+      { id: "a1", role: "assistant", createdAt: 2, parts: [], tools: [
+          { id: "t1", kind: "search", detail: "Texel dit weekend", status: "ok" },
+          { id: "t3", kind: "other", detail: "schedule_create", status: "ok", note: { type: "reminder", text: "Sterrenwacht boeken" } },
+          { id: "t4", kind: "other", detail: "memory_save", status: "error" },
+        ],
+        done: true, error: null },
       { id: "a2", role: "assistant", createdAt: 4, parts: ["## Texel", "Neem de boot."], done: true, error: null },
       { id: "a3", role: "assistant", createdAt: 7, parts: [], done: false, error: null },
       { id: "a4", role: "assistant", createdAt: 8, parts: [], done: true, error: "Rate limited" },
@@ -32,10 +38,13 @@ describe("previews", () => {
     expect(previewOf(msgs)).toBe("Zeker! Zie de site.")
     expect(previewOf([])).toBeNull()
     expect(previewOf(msgs, 6)).toBe("Zeker…")
+    expect(lastSaid(msgs)?.from).toBe("assistant")
+    expect(lastSaid(msgs.slice(0, 1))).toEqual({ text: "hoi", from: "user" })
   })
 
   test("plainText flattens markdown", () => {
     expect(plainText("# Kop\n- een\n- `twee`\n> quote")).toBe("Kop een twee quote")
+    expect(plainText("Lijst:\n- [ ] Eieren\n- [x] Koriander")).toBe("Lijst: Eieren Koriander")
     expect(plainText("_nadruk_ en __sterk__ in my_file_name.ts")).toBe("nadruk en sterk in my_file_name.ts")
   })
 })

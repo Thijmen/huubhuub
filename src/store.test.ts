@@ -74,3 +74,99 @@ describe("Store spending limits", () => {
     store.close()
   })
 })
+
+describe("Store merging people", () => {
+  const schedule = (store: Store, chatId: number) =>
+    store.createSchedule({ chatId, name: "s", kind: "interval", spec: "every 1h", prompt: "p", model: null, agent: null, silent: false, nextAt: 1 })
+
+  test("an app-only person joins their Telegram self, with everything they had", () => {
+    const store = new Store(dir)
+    const telegram = store.seePerson(42, "Thijmen", "thijmen", 100)
+    const app = store.createAppPerson("Thijmen (app)")
+    store.updatePerson(app.id, { memoryMode: "auto", spendDaily: 3 })
+    store.updatePerson(telegram, { spendDaily: 5 })
+    store.addMemory(app.id, "Has a dog called Bram", "agent")
+    store.addMemory(app.id, "Likes tea", "user")
+    store.addMemory(telegram, "Likes tea", "user")
+    const device = store.addDevice({ id: "d1", personId: app.id, tokenHash: "h", name: "Pixel", platform: "android" })
+    store.set({ chatId: app.appChatId!, threadId: 1 }, "ses_app")
+    store.touch({ chatId: app.appChatId!, threadId: 1 }, app.id)
+    store.set({ chatId: 42, threadId: 7 }, "ses_tg")
+
+    const merged = store.mergePeople(app.id, telegram)
+
+    expect(merged).toMatchObject({ id: 42, telegramId: 42, appChatId: app.appChatId, name: "Thijmen", username: "thijmen", memoryMode: "auto", spendDaily: 5, seenAt: 100 })
+    expect(store.person(app.id)).toBeUndefined()
+    expect(store.memories(42).map((m) => m.text).sort()).toEqual(["Has a dog called Bram", "Likes tea"])
+    expect(store.device(device.id)?.personId).toBe(42)
+    expect(store.ownerOfChat(app.appChatId!)).toBe(42)
+    expect(store.bySession("ses_app")?.userId).toBe(42)
+    expect(store.conversationsOf(42).map((c) => c.sessionID).sort()).toEqual(["ses_app", "ses_tg"])
+    expect(store.seePerson(42, "Thijmen", "thijmen")).toBe(42)
+    store.close()
+  })
+
+  test("the order doesn't matter: Telegram survives", () => {
+    const store = new Store(dir)
+    const app = store.createAppPerson("Sanne")
+    const telegram = store.seePerson(7, null, null)
+    expect(store.mergePeople(telegram, app.id)).toMatchObject({ id: 7, telegramId: 7, appChatId: app.appChatId, name: "Sanne" })
+    store.close()
+  })
+
+  test("when both have app conversations, they end up in one app chat", () => {
+    const store = new Store(dir)
+    const telegram = store.seePerson(42, "Thijmen", null)
+    const mine = store.appChatOf(telegram)
+    store.set({ chatId: mine, threadId: 1 }, "ses_a")
+    store.set({ chatId: mine, threadId: 2 }, "ses_b")
+    const app = store.createAppPerson("Thijmen")
+    store.set({ chatId: app.appChatId!, threadId: 1 }, "ses_c")
+    store.set({ chatId: app.appChatId!, threadId: 2 }, "ses_d")
+    const theirs = schedule(store, app.appChatId!)
+
+    const merged = store.mergePeople(telegram, app.id)
+
+    expect(merged.appChatId).toBe(mine)
+    expect(store.bySession("ses_a")).toMatchObject({ chatId: mine, threadId: 1 })
+    expect(store.bySession("ses_c")).toMatchObject({ chatId: mine, threadId: 3 })
+    expect(store.bySession("ses_d")).toMatchObject({ chatId: mine, threadId: 4 })
+    expect(store.schedule(theirs.id)?.chatId).toBe(mine)
+    expect(store.conversationsOf(42).length).toBe(4)
+    expect(store.ownerOfChat(app.appChatId!)).toBeNull()
+    store.close()
+  })
+
+  test("two app-only people: the older one survives", () => {
+    const store = new Store(dir)
+    const first = store.createAppPerson("Sanne")
+    const second = store.createAppPerson(null)
+    store.updatePerson(second.id, { spendExempt: true })
+    expect(store.mergePeople(second.id, first.id)).toMatchObject({ id: first.id, name: "Sanne", spendExempt: true })
+    expect(store.person(second.id)).toBeUndefined()
+    store.close()
+  })
+
+  test("refuses two Telegram accounts, the same person, or someone unknown", () => {
+    const store = new Store(dir)
+    const a = store.seePerson(1, "A", null)
+    const b = store.seePerson(2, "B", null)
+    expect(() => store.mergePeople(a, b)).toThrow("only have one Telegram account")
+    expect(() => store.mergePeople(a, a)).toThrow("same person")
+    expect(() => store.mergePeople(a, 999)).toThrow("no person 999")
+    expect(store.person(a)).toBeDefined()
+    expect(store.person(b)).toBeDefined()
+    store.close()
+  })
+
+  test("link codes work once and expire", () => {
+    const store = new Store(dir)
+    const app = store.createAppPerson("Sanne")
+    store.addTelegramLink("h1", app.id, 1000, 0)
+    expect(store.takeTelegramLink("h1", 500)).toBe(app.id)
+    expect(store.takeTelegramLink("h1", 600)).toBeUndefined()
+    store.addTelegramLink("h2", app.id, 1000, 0)
+    expect(store.takeTelegramLink("h2", 1000)).toBeUndefined()
+    store.close()
+  })
+})

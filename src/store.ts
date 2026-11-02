@@ -292,6 +292,14 @@ export class Store {
       expires_at INTEGER NOT NULL,
       used_at INTEGER
     )`)
+    // One-time codes an app user sends to the bot (a t.me deep link) to link their Telegram account.
+    this.db.run(`CREATE TABLE IF NOT EXISTS telegram_links (
+      code_hash TEXT PRIMARY KEY,
+      person_id INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    )`)
     this.db.run("PRAGMA foreign_keys = ON")
     this.migrateChats()
   }
@@ -728,6 +736,88 @@ export class Store {
       .query<{ person_id: number; n: number }, [number]>("SELECT person_id, COUNT(*) AS n FROM app_invites WHERE used_at IS NULL AND expires_at > ? GROUP BY person_id")
       .all(now)
     return new Map(rows.map((r) => [r.person_id, r.n]))
+  }
+
+  addTelegramLink(codeHash: string, personId: number, expiresAt: number, now = Date.now()): void {
+    this.db.query("INSERT INTO telegram_links (code_hash, person_id, created_at, expires_at) VALUES (?, ?, ?, ?)").run(codeHash, personId, now, expiresAt)
+  }
+
+  /** Use up a Telegram link code. Returns whose it was, or undefined when it's unknown, used or expired. */
+  takeTelegramLink(codeHash: string, now = Date.now()): number | undefined {
+    return (
+      this.db
+        .query<{ person_id: number }, [number, string, number]>(
+          "UPDATE telegram_links SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING person_id",
+        )
+        .get(now, codeHash, now)?.person_id ?? undefined
+    )
+  }
+
+  /**
+   * Make two people one, e.g. someone who started in the app and then linked their Telegram account. The one
+   * with Telegram survives, because a Telegram user's person ID is their Telegram ID (see `threadsOf`);
+   * otherwise the older one does. Their conversations, memories, phones and settings all end up with the
+   * survivor; where both have a setting, the survivor's wins. Can't be undone.
+   */
+  mergePeople(aId: number, bId: number): Person {
+    if (aId === bId) throw new Error("That's the same person.")
+    const a = this.person(aId)
+    const b = this.person(bId)
+    if (!a || !b) throw new Error(`There's no person ${a ? bId : aId}.`)
+    if (a.telegramId !== null && b.telegramId !== null) throw new Error("Both of them use Telegram, and a person can only have one Telegram account.")
+    const [keep, drop] = a.telegramId !== null || (b.telegramId === null && a.id < b.id) ? [a, b] : [b, a]
+    this.db.transaction(() => {
+      let appChatId = keep.appChatId ?? drop.appChatId
+      if (keep.appChatId !== null && drop.appChatId !== null) this.moveAppChat(drop.appChatId, keep.appChatId)
+      // Free the unique Telegram and app chat IDs before the survivor takes them.
+      this.db.query("UPDATE people SET telegram_id = NULL, app_chat_id = NULL WHERE user_id = ?").run(drop.id)
+      const seenAt = keep.seenAt === null || drop.seenAt === null ? (keep.seenAt ?? drop.seenAt) : Math.max(keep.seenAt, drop.seenAt)
+      this.db
+        .query(
+          `UPDATE people SET telegram_id = ?, app_chat_id = ?, name = ?, username = ?, persona_id = ?, memory_mode = ?,
+             spend_daily = ?, spend_monthly = ?, spend_exempt = ?, seen_at = ? WHERE user_id = ?`,
+        )
+        .run(
+          keep.telegramId ?? drop.telegramId,
+          appChatId,
+          keep.name ?? drop.name,
+          keep.username ?? drop.username,
+          keep.personaId ?? drop.personaId,
+          keep.memoryMode ?? drop.memoryMode,
+          keep.spendDaily ?? drop.spendDaily,
+          keep.spendMonthly ?? drop.spendMonthly,
+          keep.spendExempt || drop.spendExempt ? 1 : 0,
+          seenAt,
+          keep.id,
+        )
+      // The same memory saved on both sides is kept once.
+      this.db.query("DELETE FROM memories WHERE user_id = ? AND text IN (SELECT text FROM memories WHERE user_id = ?)").run(drop.id, keep.id)
+      for (const [table, column] of [
+        ["memories", "user_id"],
+        ["threads", "user_id"],
+        ["app_devices", "person_id"],
+        ["app_invites", "person_id"],
+        ["telegram_links", "person_id"],
+      ] as const) {
+        this.db.query(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(keep.id, drop.id)
+      }
+      this.db.query("DELETE FROM people WHERE user_id = ?").run(drop.id)
+    })()
+    return this.person(keep.id)!
+  }
+
+  /**
+   * Move every conversation in one app-only chat into another, numbered after the ones already there, along
+   * with the chat's scheduled tasks. Sessions remember the chat they started in (OpenCode metadata), but
+   * nothing reads that back, so it can stay as it was.
+   */
+  private moveAppChat(from: number, to: number): void {
+    const threads = this.db.query<{ thread_id: number }, [number]>("SELECT thread_id FROM threads WHERE chat_id = ? ORDER BY thread_id").all(from)
+    let next = this.nextAppThread(to)
+    for (const { thread_id } of threads) {
+      this.db.query("UPDATE threads SET chat_id = ?, thread_id = ? WHERE chat_id = ? AND thread_id = ?").run(to, next++, from, thread_id)
+    }
+    this.db.query("UPDATE schedules SET chat_id = ? WHERE chat_id = ?").run(to, from)
   }
 
   addDevice(d: { id: string; personId: number; tokenHash: string; name: string | null; platform: string | null }, now = Date.now()): AppDevice {

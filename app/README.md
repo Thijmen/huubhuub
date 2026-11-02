@@ -5,15 +5,26 @@ repo root); the plan and milestones are in [../docs/app/PLAN.md](../docs/app/PLA
 
 ```sh
 bun install
-bun run start       # Expo dev server; scan the QR code with Expo Go
+bunx expo run:android   # builds a development version, installs it on the phone or emulator and starts Metro
 bun run typecheck
 bun run test
 ```
 
+Expo Go can't run the app: it ships other versions of some native modules (notifications). The development
+build needs the Android SDK and JDK 17 (`JAVA_HOME`); it generates `android/`, which isn't committed. After the
+first build, `bun run start` is enough until the native modules change.
+
 To sign in during development, create an invite (`/app` in Telegram, or the admin UI's People page) and open
 the link on the phone, or paste it on the sign-in screen. The bot's `APP_PUBLIC_URL` must be reachable from
-the phone. In Expo Go a local address like `http://<your-ip>:8081` works; APK builds need HTTPS, because
-Android blocks plain HTTP in release builds.
+the phone. A development build accepts a local address like `http://<your-ip>:8081`; APK builds need HTTPS,
+because Android blocks plain HTTP in release builds.
+
+### Without a bot
+
+`bun scripts/app-demo.ts` (from the repo root) serves the app API with made-up Dutch conversations: pinned ones,
+a question waiting for an answer, tool activity, a reminder, and a reply that streams in when you send
+something. No Telegram or OpenCode needed. It prints an invite; on the Android emulator, which reaches your
+computer at `10.0.2.2` (the default host), sign in with `adb shell am start -d '<app link>'`.
 
 ## Layout
 
@@ -31,7 +42,21 @@ and the server can't drift apart.
 ## Builds and updates
 
 `.github/workflows/app.yml` builds an APK on EAS when native code changes and publishes an over-the-air update
-otherwise. One-time setup:
+otherwise. Pull requests say which of the two merging will do.
+
+The app keeps itself up to date (`src/lib/updates.tsx`):
+
+- **Over-the-air updates** download at launch and whenever the app comes back to the foreground (at most every
+  20 minutes). A downloaded update starts the next time the app is opened after five minutes away, or on a cold
+  start, so it never reloads while someone is typing. Settings → Check for updates does it right away.
+- **New APKs** can't arrive over the air. CI publishes each one on the rolling GitHub release `app-android`
+  (`huubhuub.apk`, plus `latest.json` with its version code and fingerprint). The app checks `latest.json` and,
+  when there's a newer build with different native code, shows a card with a download button; installing over
+  the old app keeps you signed in. Forks point their builds at their own release with
+  `EXPO_PUBLIC_APP_RELEASES` (an EAS environment variable). Run the workflow by hand to republish the current
+  APK, e.g. after setting this up: EAS's own download links expire after a few weeks.
+
+One-time setup:
 
 1. `bunx eas-cli login`, then `bunx eas-cli init` and put the project ID and owner in `app.config.ts`
    (`OFFICIAL_PROJECT_ID`, `OFFICIAL_OWNER`).

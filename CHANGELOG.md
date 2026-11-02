@@ -1,5 +1,61 @@
 # huubhuub
 
+## 0.5.5
+
+### Patch Changes
+
+- [#63](https://github.com/Thijmen/huubhuub/pull/63) [`95b091a`](https://github.com/Thijmen/huubhuub/commit/95b091a85109e631fbc520ba19c22bec0a846c45) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/cli to v2.2.5
+
+- [#64](https://github.com/Thijmen/huubhuub/pull/64) [`d4d24cc`](https://github.com/Thijmen/huubhuub/commit/d4d24cce760b7af0030db6c5c8527611dcc283a9) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/client to v2.2.5
+
+## 0.5.4
+
+### Patch Changes
+
+- [#56](https://github.com/Thijmen/huubhuub/pull/56) [`3bcfde6`](https://github.com/Thijmen/huubhuub/commit/3bcfde65b3b57e5d293bc1aef78cc579d9f0e22c) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/client to v2.2.2
+
+- [#58](https://github.com/Thijmen/huubhuub/pull/58) [`e1df258`](https://github.com/Thijmen/huubhuub/commit/e1df258576ff31eb4a05312712c107170e3131a2) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency @opencode/cli to v2.2.2
+
+- [#59](https://github.com/Thijmen/huubhuub/pull/59) [`8d4814a`](https://github.com/Thijmen/huubhuub/commit/8d4814a611719dd65ae3828da399bcff31df0211) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native to v0.88.1
+
+- [#60](https://github.com/Thijmen/huubhuub/pull/60) [`d2ab07c`](https://github.com/Thijmen/huubhuub/commit/d2ab07c2b649268544f4cbfc58f9e9d1b0e508fd) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native-safe-area-context to ~5.11.0
+
+## 0.5.3
+
+### Patch Changes
+
+- [#54](https://github.com/Thijmen/huubhuub/pull/54) [`dfb6387`](https://github.com/Thijmen/huubhuub/commit/dfb6387223d1ab691742a097d5a6ab75cf02495d) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native-worklets to v0.13.1
+
+## 0.5.2
+
+### Patch Changes
+
+- [#52](https://github.com/Thijmen/huubhuub/pull/52) [`3c44ad2`](https://github.com/Thijmen/huubhuub/commit/3c44ad2a9a4216f70195d8f09b7df52a3d204aa6) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix MCP servers added in the admin UI disappearing after a while; they are now restored whenever OpenCode reloads its configuration.
+
+- [#51](https://github.com/Thijmen/huubhuub/pull/51) [`dd3c665`](https://github.com/Thijmen/huubhuub/commit/dd3c665eab0c690317671431cca42ac1b4c54c77) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix voice notes recorded in the Android app failing with "The decoded audio isn't a WAV file".
+
+## 0.5.1
+
+### Patch Changes
+
+- [#34](https://github.com/Thijmen/huubhuub/pull/34) [`58fd2c4`](https://github.com/Thijmen/huubhuub/commit/58fd2c4d4155257e6e2cba36a4e8f9c916bd89c7) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react to v19.3.1
+
+- [#35](https://github.com/Thijmen/huubhuub/pull/35) [`840cca7`](https://github.com/Thijmen/huubhuub/commit/840cca77b0571894e88fbabcd7e6ad980a697a2c) Thanks [@renovate](https://github.com/apps/renovate)! - Update dependency react-native-gesture-handler to ~3.4.0
+
+## 0.5.0
+
+### Minor Changes
+
+- [#46](https://github.com/Thijmen/huubhuub/pull/46) [`4547196`](https://github.com/Thijmen/huubhuub/commit/45471961ccd0f5e04103a5f6a31f7c0b74b65605) Thanks [@Thijmen](https://github.com/Thijmen)! - The phone app keeps itself up to date. Over-the-air updates download in the background and start the next time the app is opened after a few minutes away. When an update needs a new APK, the app offers the download instead of silently falling behind. Each APK now stays available on the "app-android" GitHub release, which is also where the invite page's "download the app" link goes by default (`APP_DOWNLOAD_URL`).
+
+## 0.4.0
+
+### Minor Changes
+
+- [#40](https://github.com/Thijmen/huubhuub/pull/40) [`b9e9535`](https://github.com/Thijmen/huubhuub/commit/b9e9535c957ecb26f327ae60d11008480712e97b) Thanks [@Thijmen](https://github.com/Thijmen)! - The phone app now looks like its design. Conversations get an emoji tile and say who spoke last, or that Huub is typing or waiting for an answer. In a conversation, Huub's searches and other steps show as small pills that stay after the reply. Reminders it sets and things it remembers get their own card. The composer, voice recorder, new-conversation screen (with starter ideas), question cards, sign-in and settings screens all got their designed look. Also fixes conversation and settings rows that lost their layout, and a crash when a phone is signed out while a conversation is open.
+
+- [#39](https://github.com/Thijmen/huubhuub/pull/39) [`2919dfe`](https://github.com/Thijmen/huubhuub/commit/2919dfe4da042be2b0751e059cc86d3095db0ac4) Thanks [@Thijmen](https://github.com/Thijmen)! - Link Telegram from the phone app: Settings → Link Telegram opens the bot, and pressing Start makes your app and Telegram one person, with shared conversations, memories and settings. On the admin UI's People page, Link with… does the same for anyone who shows up twice.
+
 ## 0.3.0
 
 ### Minor Changes

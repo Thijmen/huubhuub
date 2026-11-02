@@ -63,7 +63,7 @@ Telegram ──long polling──▶ grammY bot (Bun)
 | `src/cost-commands.ts` | `/costs` |
 | `src/admin/web/` | Admin frontend (React, no build step) |
 | `src/app-api/` | The phone app's API: invites and device tokens, conversations, live events, push notifications, search, settings |
-| `src/app-commands.ts` | `/app` |
+| `src/app-commands.ts` | `/app`, and `/start link_…` for linking Telegram from the app |
 | `app/` | The phone app (Expo / React Native) |
 | `bot.opencode.jsonc` | OpenCode config: permissions (allow all) and image limits |
 
@@ -237,6 +237,7 @@ Setting it up:
    - People who use Telegram send `/app` to the bot and open the link on their phone. Their Telegram conversations show up in the app, and conversations started in the app get a Telegram topic.
    - People who don't: on the admin UI's **People** page, press **Invite to the app**, enter a name, and let them scan the QR code or send them the link. Their conversations live only in the app.
 3. Invites work once and expire after 24 hours. Each phone gets its own sign-in; the People page lists them and can sign a phone out.
+4. Someone who started in the app can link Telegram later: **Settings → Link Telegram** in the app opens the bot, and pressing **Start** there makes them one person (and adds them to the allowlist). Their conversations, memories and settings are combined, also when they had already talked to the bot. The People page can do the same with **Link with…**, for anyone who shows up twice.
 
 How it behaves:
 

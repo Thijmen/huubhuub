@@ -1,7 +1,10 @@
+import * as Clipboard from "expo-clipboard"
 import { Lexer, type Token, type Tokens } from "marked"
-import { memo, useMemo, type ReactNode } from "react"
-import { Linking, ScrollView, Text, View, type TextStyle } from "react-native"
+import { memo, useMemo, useState, type ReactNode } from "react"
+import { Linking, Pressable, ScrollView, Text, View, type TextStyle } from "react-native"
+import { t as tr } from "@/lib/i18n"
 import { font, radius, space, useTheme, type Palette } from "@/theme"
+import { Icon } from "./art"
 
 /** Markdown from Huub as native text: headings, lists, code, quotes, links, tables. */
 export const Markdown = memo(function Markdown({ text, color }: { text: string; color?: string }) {
@@ -25,9 +28,9 @@ function block(t: Token, key: number, c: Palette, base: TextStyle): ReactNode {
       return t.type === "hr" ? <View key={key} style={{ height: 1, backgroundColor: c.border, marginVertical: space.xs }} /> : null
     case "heading": {
       const h = t as Tokens.Heading
-      const size = h.depth <= 1 ? font.size.title : h.depth === 2 ? 19 : font.size.heading
+      const size = h.depth <= 1 ? 20 : h.depth === 2 ? 18.5 : font.size.heading
       return (
-        <Text key={key} selectable style={{ ...base, fontFamily: font.rounded, fontSize: size, lineHeight: size + 6 }}>
+        <Text key={key} selectable style={{ ...base, fontFamily: font.rounded, fontSize: size, lineHeight: size + 6.5 }}>
           {inline(h.tokens, c, base)}
         </Text>
       )
@@ -50,28 +53,28 @@ function block(t: Token, key: number, c: Palette, base: TextStyle): ReactNode {
       const l = t as Tokens.List
       const start = typeof l.start === "number" ? l.start : 1
       return (
-        <View key={key} style={{ gap: space.xs }}>
+        <View key={key} style={{ gap: 3 }}>
           {l.items.map((item, i) => (
-            <View key={i} style={{ flexDirection: "row", gap: space.sm }}>
-              <Text style={{ ...base, color: c.primaryText, minWidth: l.ordered ? 22 : 12, fontVariant: ["tabular-nums"] }}>
-                {item.task ? (item.checked ? "☑" : "☐") : l.ordered ? `${start + i}.` : "•"}
-              </Text>
-              <View style={{ flex: 1, gap: space.xs }}>{item.tokens.map((child, j) => block(child, j, c, base))}</View>
+            <View key={i} style={{ flexDirection: "row", gap: 8 }}>
+              {item.task ? (
+                <View style={{ width: 16, height: 16, marginTop: 4, borderRadius: 5, borderWidth: 2, borderColor: item.checked ? c.primary : c.borderStrong, backgroundColor: item.checked ? c.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
+                  {item.checked && <Icon name="check" size={11} color={c.onPrimary} />}
+                </View>
+              ) : l.ordered ? (
+                <Text style={{ ...base, minWidth: 18, color: c.primaryText, fontFamily: font.rounded, fontVariant: ["tabular-nums"] }}>{start + i}.</Text>
+              ) : (
+                <View style={{ width: 10, alignItems: "center", paddingTop: 9 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.primary }} />
+                </View>
+              )}
+              <View style={{ flex: 1, gap: space.xs }}>{item.tokens.filter((child) => child.type !== "checkbox").map((child, j) => block(child, j, c, base))}</View>
             </View>
           ))}
         </View>
       )
     }
-    case "code": {
-      const code = t as Tokens.Code
-      return (
-        <ScrollView key={key} horizontal style={{ backgroundColor: c.codeBg, borderRadius: radius.md, borderCurve: "continuous" }} contentContainerStyle={{ padding: space.md }}>
-          <Text selectable style={{ color: c.codeText, fontFamily: font.mono, fontSize: font.size.code, lineHeight: font.lineHeight.code }}>
-            {code.text}
-          </Text>
-        </ScrollView>
-      )
-    }
+    case "code":
+      return <CodeBlock key={key} code={t as Tokens.Code} />
     case "blockquote":
       return (
         <View key={key} style={{ borderLeftWidth: 3, borderLeftColor: c.questionBorder, paddingLeft: space.md, gap: space.xs }}>
@@ -105,6 +108,33 @@ function block(t: Token, key: number, c: Palette, base: TextStyle): ReactNode {
   }
 }
 
+/** A code block with its language (or label) on top and a copy button. */
+function CodeBlock({ code }: { code: Tokens.Code }) {
+  const { c } = useTheme()
+  const [copied, setCopied] = useState(false)
+  const copy = () =>
+    void Clipboard.setStringAsync(code.text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  return (
+    <View style={{ backgroundColor: c.codeBg, borderRadius: 12, borderCurve: "continuous", overflow: "hidden" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: c.codeHeader, paddingLeft: 12, paddingRight: 8, paddingVertical: 5 }}>
+        <Text style={{ color: c.codeDim, fontSize: 11.5, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" }}>{code.lang?.split(/\s/)[0] || "code"}</Text>
+        <Pressable onPress={copy} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Icon name={copied ? "check" : "copy"} size={13} color={c.codeDim} />
+          <Text style={{ color: c.codeDim, fontSize: 11.5, fontWeight: "600" }}>{copied ? tr("copied") : tr("copy")}</Text>
+        </Pressable>
+      </View>
+      <ScrollView horizontal contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 9, paddingBottom: 10 }}>
+        <Text selectable style={{ color: c.codeText, fontFamily: font.mono, fontSize: 12.5, lineHeight: 19 }}>
+          {code.text}
+        </Text>
+      </ScrollView>
+    </View>
+  )
+}
+
 function inline(tokens: Token[] | undefined, c: Palette, base: TextStyle): ReactNode {
   return tokens?.map((t, i) => {
     switch (t.type) {
@@ -128,14 +158,14 @@ function inline(tokens: Token[] | undefined, c: Palette, base: TextStyle): React
         )
       case "codespan":
         return (
-          <Text key={i} style={{ fontFamily: font.mono, fontSize: font.size.code, backgroundColor: c.inlineCodeBg, color: c.inlineCodeText }}>
+          <Text key={i} style={{ fontFamily: font.mono, fontSize: font.size.code, backgroundColor: c.inlineCodeBg, color: c.inlineCodeText, borderRadius: radius.xs }}>
             {` ${decode((t as Tokens.Codespan).text)} `}
           </Text>
         )
       case "link": {
         const link = t as Tokens.Link
         return (
-          <Text key={i} style={{ color: c.accent, textDecorationLine: "underline" }} onPress={() => void Linking.openURL(link.href).catch(() => {})}>
+          <Text key={i} style={{ color: c.accent, textDecorationLine: "underline", textDecorationColor: c.accent }} onPress={() => void Linking.openURL(link.href).catch(() => {})}>
             {inline(link.tokens, c, base)}
           </Text>
         )
