@@ -1,7 +1,7 @@
 import { router } from "expo-router"
 import { Pressable, Text, View } from "react-native"
 import type { ConversationSummary } from "@server/protocol"
-import { relativeTime, t } from "@/lib/i18n"
+import { cost, relativeTime, t } from "@/lib/i18n"
 import { topicOf } from "@/lib/topic"
 import { font, space, useTheme } from "@/theme"
 import { HuubAvatar, Tile, TypingDots } from "./art"
@@ -55,6 +55,7 @@ export function ConversationRow({
             {topic.title || t("untitled")}
           </Text>
           <Text style={{ fontSize: font.size.caption, color: item.busy || fresh ? c.primaryText : c.textMuted, fontWeight: item.busy || fresh ? "700" : "400", fontVariant: ["tabular-nums"] }}>
+            {item.cost ? `${cost(item.cost)} · ` : ""}
             {item.busy ? t("now") : relativeTime(item.updatedAt)}
           </Text>
         </View>

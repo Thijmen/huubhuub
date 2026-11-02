@@ -41,6 +41,7 @@ const en = {
   unpin: "Unpin",
   archive: "Archive",
   unarchive: "Move back",
+  costSoFar: "Cost so far: {cost}",
   archived: "Archived",
   archivedLink: "Archived conversations",
   archivedEmpty: "Nothing archived. Long-press a conversation to archive it.",
@@ -240,6 +241,7 @@ const nl: Record<Key, string> = {
   unpin: "Losmaken",
   archive: "Archiveren",
   unarchive: "Terugzetten",
+  costSoFar: "Kosten tot nu toe: {cost}",
   archived: "Archief",
   archivedLink: "Gearchiveerde gesprekken",
   archivedEmpty: "Niks gearchiveerd. Houd een gesprek ingedrukt om het te archiveren.",
@@ -473,4 +475,9 @@ export function dateTime(at: number): string {
 
 export function money(usd: number): string {
   return new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: usd < 10 ? 2 : 0 }).format(usd)
+}
+
+/** A conversation's cost; amounts too small to show in cents read "< $0.01". */
+export function cost(usd: number): string {
+  return usd > 0 && usd < 0.005 ? `< ${money(0.01)}` : money(usd)
 }

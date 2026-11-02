@@ -69,6 +69,8 @@ export interface ConversationSummary {
   pinned: boolean
   /** Moved out of the list; writing in it brings it back. */
   archived: boolean
+  /** What the conversation has cost so far in US dollars, helpers included. Missing on older servers. */
+  cost?: number
 }
 
 /** `GET /v1/conversations` lists active conversations, pinned first; `?archived=1` lists archived ones. */

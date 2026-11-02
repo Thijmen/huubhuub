@@ -198,6 +198,7 @@ const appApi =
         access: appAccess,
         push: appPush,
         transcriber,
+        usage,
         serverName: () => (bot.isInited() ? (bot.botInfo.first_name ?? "HuubHuub") : "HuubHuub"),
         settings: { personas, limits, scheduler, schedules, timeZone },
         telegramLinks,

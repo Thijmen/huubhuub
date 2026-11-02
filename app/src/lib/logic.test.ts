@@ -67,6 +67,13 @@ describe("chatReducer", () => {
     expect(s.older).toBeNull()
   })
 
+  test("keeps the conversation's cost from the latest page", () => {
+    let s = chatReducer(initialChat, { type: "page", page: page() })
+    expect(s.cost).toBeNull()
+    s = chatReducer(s, { type: "page", page: page({ conversation: { ...page().conversation, cost: 0.42 } }) })
+    expect(s.cost).toBe(0.42)
+  })
+
   test("only open questions are shown", () => {
     const q = { formID: "f", status: "pending" as const, index: 0, total: 1, fields: [], selected: [], answers: [], expiresAt: 0 }
     let s = chatReducer(initialChat, { type: "event", event: { type: "question", question: q } })

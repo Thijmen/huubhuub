@@ -37,6 +37,7 @@ import {
 } from "./protocol"
 import type { AppPush } from "./push"
 import type { Transcriber } from "../transcribe"
+import type { Usage } from "../usage"
 
 const PAGE = 60
 const LIST_LIMIT = 100
@@ -59,6 +60,8 @@ export interface AppDeps {
   push: AppPush
   /** Turns voice notes into text; undefined when the server has no AWS credentials. */
   transcriber?: Pick<Transcriber, "transcribeRecording">
+  /** What each conversation has cost. */
+  usage: Pick<Usage, "ready" | "totals">
   /** The Telegram bot's name, shown in the app. */
   serverName: () => string
   /** For the settings screens: persona, memory, scheduled tasks, spending. */
@@ -320,8 +323,12 @@ function owned(d: AppDeps, device: AppDevice, req: Req): ChatState {
   return thread
 }
 
+/** Sessions that are busy right now. Also waits for the first usage scan, so summaries can show costs. */
 async function activeSessions(d: AppDeps): Promise<Set<string>> {
-  const active = await d.bridge.host.session.active().catch(() => ({}) as Record<string, unknown>)
+  const [active] = await Promise.all([
+    d.bridge.host.session.active().catch(() => ({}) as Record<string, unknown>),
+    d.usage.ready().catch((err) => console.error("usage scan failed", err)),
+  ])
   return new Set(Object.keys(active))
 }
 
@@ -346,6 +353,7 @@ async function summary(d: AppDeps, t: ChatState, active: Set<string>, loaded?: R
     telegram: !isAppChat(t.chatId),
     pinned: t.pinned,
     archived: t.archivedAt !== null,
+    cost: d.usage.totals(t.sessionID).cost,
   }
 }
 

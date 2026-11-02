@@ -225,6 +225,17 @@ const server = startAppApi({
   access,
   push: new AppPush({ store, bridge, send: async () => [] }),
   transcriber: { transcribeRecording: async () => "Wat nemen we mee naar Texel?" },
+  // Made-up costs: a few cents per message, so the list shows a spread of amounts.
+  usage: {
+    ready: async () => {},
+    totals: (id: string) => ({
+      cost: (conversations[id]?.messages.length ?? 0) * 0.013,
+      turns: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      models: [],
+      subagents: 0,
+    }),
+  },
   serverName: () => "Huub",
   settings: {
     personas: new Personas(store, () => "Europe/Amsterdam"),
