@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.6.0
+
+### Minor Changes
+
+- [#67](https://github.com/Thijmen/huubhuub/pull/67) [`420dd1d`](https://github.com/Thijmen/huubhuub/commit/420dd1de73f7313431f507519af259aa3b6b2439) Thanks [@Thijmen](https://github.com/Thijmen)! - The app now shows what each conversation has cost so far, in the conversation list and in a conversation's menu.
+
 ## 0.5.5
 
 ### Patch Changes
