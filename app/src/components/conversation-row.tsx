@@ -2,7 +2,7 @@ import { Link } from "expo-router"
 import { Pressable, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import type { ConversationSummary } from "@server/protocol"
-import { relativeTime, t } from "@/lib/i18n"
+import { cost, relativeTime, t } from "@/lib/i18n"
 import { font, radius, space, useTheme } from "@/theme"
 import { Icon } from "./art"
 
@@ -30,7 +30,10 @@ export function ConversationRow({ item, snippet, onLongPress }: { item: Conversa
           <Text numberOfLines={1} style={{ flex: 1, color: c.text, fontFamily: font.roundedSemi, fontSize: font.size.heading, lineHeight: font.lineHeight.heading }}>
             {item.title || t("untitled")}
           </Text>
-          <Text style={{ color: c.textMuted, fontSize: font.size.caption, fontVariant: ["tabular-nums"] }}>{relativeTime(item.updatedAt)}</Text>
+          <Text style={{ color: c.textMuted, fontSize: font.size.caption, fontVariant: ["tabular-nums"] }}>
+            {item.cost ? `${cost(item.cost)} · ` : ""}
+            {relativeTime(item.updatedAt)}
+          </Text>
         </View>
         {item.busy && snippet === undefined ? (
           <Animated.Text entering={FadeIn} style={{ color: c.primaryText, fontSize: font.size.small, lineHeight: font.lineHeight.small, fontWeight: "600" }}>

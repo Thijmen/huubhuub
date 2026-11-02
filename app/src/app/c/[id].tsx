@@ -98,7 +98,7 @@ function Chat({ id }: { id: string }) {
               <Pressable
                 hitSlop={10}
                 accessibilityLabel={t("archive")}
-                onPress={() => showConversationActions(api, { id, title: state.title, pinned: state.pinned, archived: state.archived }, organised)}
+                onPress={() => showConversationActions(api, { id, title: state.title, pinned: state.pinned, archived: state.archived, cost: state.cost ?? undefined }, organised)}
               >
                 <Icon name="more" color={c.text} />
               </Pressable>

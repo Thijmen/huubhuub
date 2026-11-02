@@ -72,6 +72,7 @@ beforeAll(() => {
         return audio.length > 3 ? "Wat eten we vanavond?" : ""
       },
     },
+    usage: { ready: async () => {}, totals: (id: string) => ({ cost: id === "ses_new_1" ? 0.37 : 0, turns: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }, models: [], subagents: 0 }) },
     serverName: () => "Huub",
     settings: {
       personas: new Personas(store, () => "Europe/Amsterdam"),
@@ -138,6 +139,7 @@ describe("app API", () => {
 
     const list = (await (await call("/v1/conversations", { token })).json()) as ConversationList
     expect(list.conversations.map((c) => c.id)).toEqual(["ses_new_1"])
+    expect(list.conversations[0]?.cost).toBe(0.37)
 
     const page = (await (await call("/v1/conversations/ses_new_1", { token })).json()) as ConversationPage
     expect(page.messages.map((m) => m.role)).toEqual(["user", "assistant"])
@@ -164,7 +166,7 @@ describe("app API", () => {
     store.set({ chatId: 43, threadId: 9 }, "ses_busy")
     const token = await signIn(43)
     const list = (await (await call("/v1/conversations", { token })).json()) as ConversationList
-    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", telegram: true, pinned: false, archived: false }])
+    expect(list.conversations).toEqual([{ id: "ses_busy", title: "Titel ses_busy", updatedAt: expect.any(Number), busy: true, preview: "Antwoord in ses_busy", telegram: true, pinned: false, archived: false, cost: 0 }])
   })
 
   test("live events in the app's format", async () => {

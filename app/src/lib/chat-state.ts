@@ -15,6 +15,8 @@ export interface ChatState {
   telegram: boolean
   pinned: boolean
   archived: boolean
+  /** US dollars so far; null when the server doesn't say. */
+  cost: number | null
   messages: AppMessage[]
   pending: Pending[]
   older: string | null
@@ -33,6 +35,7 @@ export const initialChat: ChatState = {
   telegram: false,
   pinned: false,
   archived: false,
+  cost: null,
   messages: [],
   pending: [],
   older: null,
@@ -64,6 +67,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
         telegram: page.conversation.telegram,
         pinned: page.conversation.pinned,
         archived: page.conversation.archived,
+        cost: page.conversation.cost ?? null,
         busy: page.conversation.busy,
         activity: page.conversation.busy ? s.activity : null,
         messages,
