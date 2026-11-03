@@ -1,0 +1,234 @@
+# Ships the phone app (app/) with each huubhuub release. CI's release job calls this after it tags vX.Y.Z; tags
+# pushed by GITHUB_TOKEN don't start workflows themselves, so it can't listen for the tag.
+#
+# Each release does one of two things, depending on the app's native fingerprint (its native code and config):
+#   - a fingerprint without a Google Play build yet: build an AAB here on the runner (expo prebuild + Gradle),
+#     sign it with the upload key and upload it to the Play internal testing track. Then push the tag
+#     play/<fingerprint>, which marks that this native code is on Play.
+#   - a fingerprint that's already on Play: publish an over-the-air update (EAS Update) on the "production"
+#     channel, but only when app/ changed since the previous release.
+# Promote internal builds to production in the Play Console by hand.
+#
+# Running it by hand does the same for the current commit. Tick "build" to build an AAB anyway, e.g. the very
+# first one, which has to be uploaded in the Play Console by hand before the API accepts uploads. Every build
+# is also kept as a workflow artifact.
+#
+# Secrets (setup steps in docs/app/google-play.md):
+#   ANDROID_UPLOAD_KEYSTORE           the upload keystore (PKCS12, key alias "upload"), base64
+#   ANDROID_UPLOAD_KEYSTORE_PASSWORD  its password
+#   GOOGLE_SERVICES_JSON              Firebase's google-services.json (push), as is
+#   PLAY_SERVICE_ACCOUNT_JSON         a Google Cloud service account key with release rights in the Play Console;
+#                                     without it the AAB is built but not uploaded
+#   EXPO_TOKEN                        an Expo access token, for over-the-air updates
+name: App release
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Build a new AAB even if the native code is already on Google Play
+        type: boolean
+        default: false
+
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+
+env:
+  PACKAGE: dev.thijmen.apps.huubhuub
+  CHANNEL: production
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      fingerprint: ${{ steps.plan.outputs.fingerprint }}
+      version: ${{ steps.plan.outputs.version }}
+      build: ${{ steps.plan.outputs.build }}
+      update: ${{ steps.plan.outputs.update }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the play/* and v* tags
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      # The Firebase file is part of the fingerprint, so every job writes it before anything looks at the config.
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES" ]; then printf '%s' "$GOOGLE_SERVICES" > google-services.json
+          else echo "::warning::Set the GOOGLE_SERVICES_JSON secret; builds need it for push notifications."; fi
+      - id: plan
+        env:
+          FORCE_BUILD: ${{ inputs.build == true }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -o pipefail
+          fingerprint=$(bunx expo-updates fingerprint:generate --platform android | jq -re .hash)
+          version=$(jq -r .version ../package.json)
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          build=false update=false
+          if [ "$FORCE_BUILD" = true ] || ! git rev-parse -q --verify "refs/tags/play/$fingerprint" >/dev/null; then
+            build=true
+            echo "Native code \`$fingerprint\` isn't on Google Play yet: building version $version." >> "$GITHUB_STEP_SUMMARY"
+          else
+            previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
+            if [ "$MANUAL" = true ] || [ -z "$previous" ] || ! git diff --quiet "$previous" HEAD -- . ../src/app-api/protocol.ts; then
+              update=true
+              echo "Native code \`$fingerprint\` is already on Google Play: publishing an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "The app hasn't changed since $previous: nothing to ship." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "update=$update" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # the play/<fingerprint> tag
+    env:
+      FINGERPRINT: ${{ needs.plan.outputs.fingerprint }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Check the secrets
+        working-directory: .
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          missing=""
+          [ -n "$KEYSTORE" ] || missing="$missing ANDROID_UPLOAD_KEYSTORE"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing ANDROID_UPLOAD_KEYSTORE_PASSWORD"
+          [ -n "$GOOGLE_SERVICES" ] || missing="$missing GOOGLE_SERVICES_JSON"
+          [ -z "$missing" ] || { echo "::error::Missing secrets:$missing (see docs/app/google-play.md)"; exit 1; }
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - run: bun install --frozen-lockfile
+      - name: Write google-services.json and the upload key
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+        run: |
+          printf '%s' "$GOOGLE_SERVICES" > google-services.json
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.p12"
+      - run: bunx expo prebuild --platform android --no-install --clean
+      - name: Build the AAB
+        working-directory: app/android
+        env:
+          # Prebuild edits package.json, which would change the fingerprint the build embeds as its runtime
+          # version. Use the one from before, which over-the-air updates are published for.
+          EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ needs.plan.outputs.fingerprint }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/upload.p12" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias=upload \
+            -Pandroid.injected.signing.key.password="$KEYSTORE_PASSWORD"
+          mv app/build/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/huubhuub-$VERSION.aab"
+      - name: Check the signature
+        working-directory: .
+        # Google Play rejects an AAB signed with the debug key, or with another upload key.
+        run: |
+          cert=$(keytool -printcert -jarfile "huubhuub-$VERSION.aab")
+          echo "$cert" | grep -E "Owner:|SHA256:"
+          if echo "$cert" | grep -q "CN=Android Debug"; then echo "::error::The AAB is signed with the debug key"; exit 1; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: huubhuub-${{ needs.plan.outputs.version }}.aab
+          path: huubhuub-${{ needs.plan.outputs.version }}.aab
+          if-no-files-found: error
+      - name: Check for the Play service account
+        id: play
+        env:
+          ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$ACCOUNT" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Set the PLAY_SERVICE_ACCOUNT_JSON secret to upload builds to Google Play."
+            echo "Built version $VERSION; it's not uploaded to Google Play (no PLAY_SERVICE_ACCOUNT_JSON). Download it from this run's artifacts." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.play.outputs.present == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE }}
+          releaseFiles: huubhuub-${{ needs.plan.outputs.version }}.aab
+          releaseName: ${{ needs.plan.outputs.version }}
+          track: internal
+          status: completed
+      - name: Mark this native code as on Google Play
+        if: steps.play.outputs.present == 'true'
+        run: |
+          git tag "play/$FINGERPRINT"
+          git push origin "play/$FINGERPRINT"
+          echo "Uploaded version $VERSION to the internal testing track; promote it to production in the Play Console." >> "$GITHUB_STEP_SUMMARY"
+
+  update:
+    needs: plan
+    if: needs.plan.outputs.update == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Check for the Expo token
+        working-directory: .
+        env:
+          TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: '[ -n "$TOKEN" ] || { echo "::error::Set the EXPO_TOKEN secret to publish over-the-air updates."; exit 1; }'
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          packager: bun
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: bun install --frozen-lockfile
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: '[ -z "$GOOGLE_SERVICES" ] || printf "%s" "$GOOGLE_SERVICES" > google-services.json'
+      - name: Publish the update
+        env:
+          FINGERPRINT: ${{ needs.plan.outputs.fingerprint }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          # The first update creates the channel (and a branch with the same name) that Play builds listen to.
+          eas channel:view "$CHANNEL" --non-interactive >/dev/null 2>&1 || eas channel:create "$CHANNEL" --non-interactive
+          eas update --channel "$CHANNEL" --environment production --platform android --non-interactive \
+            --message "huubhuub $VERSION"
+          echo "Published an update for native code \`$FINGERPRINT\`; installed apps download it in the background and switch to it the next time they're opened." >> "$GITHUB_STEP_SUMMARY"

@@ -5,12 +5,13 @@
 #   2. once that PR is merged, it tags the commit vX.Y.Z and publishes a GitHub release with the
 #      changelog entry; then the image job builds ghcr.io/thijmen/huubhuub for amd64 and arm64
 #      (the k3s cluster is arm64) and pushes it as X.Y.Z, sha-<short> and latest,
-#   3. update_infra opens a PR on the GitOps repo bumping k8s/services/huub/app/values.yaml
+#   3. app ships the phone app: a new Google Play build or an over-the-air update (app-release.yml),
+#   4. update_infra opens a PR on the GitOps repo bumping k8s/services/huub/app/values.yaml
 #      (image.repository and image.tag), which Argo CD deploys once merged.
 # Merges that don't release (pending entries, or none at all) build and deploy nothing.
 #
 # The release job needs "Allow GitHub Actions to create and approve pull requests" enabled in
-# the repo's Actions settings. Step 3 needs the repository variable GITOPS_REPO (owner/name,
+# the repo's Actions settings. Step 4 needs the repository variable GITOPS_REPO (owner/name,
 # e.g. Thijmen/infra-argocd) and the secret INFRA_ARGOCD_PAT (contents + pull-requests write on
 # that repo); it is skipped without either. GITHUB_TOKEN covers the rest.
 name: CI
@@ -112,6 +113,14 @@ jobs:
       - run: echo "::notice::${IMAGE}:${VERSION}"
         env:
           VERSION: ${{ needs.release.outputs.version }}
+
+  app:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: write # the play/<fingerprint> tag
+    uses: ./.github/workflows/app-release.yml
+    secrets: inherit
 
   update_infra:
     needs: image

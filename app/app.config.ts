@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import type { ExpoConfig } from "expo/config"
 import { existsSync } from "node:fs"
+import root from "../package.json"
 
 /**
  * The Expo project that builds the official app, sends its push notifications and serves its over-the-air
@@ -11,27 +12,41 @@ const OFFICIAL_PROJECT_ID = "025416eb-b7d3-4ca0-b1b1-d5b79a2dfe58"
 const OFFICIAL_OWNER = "thijmenstavenuiter"
 const projectId = process.env.EAS_PROJECT_ID || OFFICIAL_PROJECT_ID || undefined
 const owner = process.env.EXPO_OWNER || OFFICIAL_OWNER || undefined
-/** Firebase config for Android push. EAS can provide it as a file environment variable. */
-const googleServices = process.env.GOOGLE_SERVICES_JSON ?? (existsSync("./google-services.json") ? "./google-services.json" : undefined)
+/**
+ * Firebase config for Android push. CI writes it to ./google-services.json; the local file comes first so the
+ * config, and with it the native fingerprint, is the same however a build or update gets its environment.
+ */
+const googleServices = existsSync("./google-services.json") ? "./google-services.json" : process.env.GOOGLE_SERVICES_JSON
+
+/** The app ships with the bot's releases, so it carries the bot's version (the root package.json). */
+const version = root.version
+/** Google Play needs a higher versionCode for every upload: 1.4.2 becomes 1004002. */
+const versionCode = (() => {
+  const [major = 0, minor = 0, patch = 0] = version.split(/[.-]/).map(Number)
+  return major * 1_000_000 + minor * 1_000 + patch
+})()
+/** The update channel the Play builds listen to (.github/workflows/app-release.yml publishes there). */
+const UPDATES_CHANNEL = "production"
 
 const config: ExpoConfig = {
   name: "HuubHuub",
   slug: "huubhuub",
   ...(owner ? { owner } : {}),
   scheme: "huubhuub",
-  version: "0.1.0",
+  version,
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
   backgroundColor: "#FFF8F0",
   runtimeVersion: { policy: "fingerprint" },
-  ...(projectId ? { updates: { url: `https://u.expo.dev/${projectId}` }, extra: { eas: { projectId } } } : {}),
+  ...(projectId ? { updates: { url: `https://u.expo.dev/${projectId}`, requestHeaders: { "expo-channel-name": UPDATES_CHANNEL } }, extra: { eas: { projectId } } } : {}),
   ios: {
-    bundleIdentifier: "nl.thijmen.huubhuub",
+    bundleIdentifier: "dev.thijmen.apps.huubhuub",
     supportsTablet: false,
   },
   android: {
-    package: "nl.thijmen.huubhuub",
+    package: "dev.thijmen.apps.huubhuub",
+    versionCode,
     adaptiveIcon: {
       backgroundColor: "#E85D04",
       foregroundImage: "./assets/android-icon-foreground.png",
