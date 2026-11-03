@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.6.1
+
+### Patch Changes
+
+- [#69](https://github.com/Thijmen/huubhuub/pull/69) [`9c4cf3e`](https://github.com/Thijmen/huubhuub/commit/9c4cf3ec5b1645987942bb6d2d4e085305a7ca3c) Thanks [@Thijmen](https://github.com/Thijmen)! - Portal: the conversations list and chat header now show who each conversation is with, and you can filter conversations by person.
+
 ## 0.6.0
 
 ### Minor Changes
