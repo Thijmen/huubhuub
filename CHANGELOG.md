@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.7.2
+
+### Patch Changes
+
+- [#76](https://github.com/Thijmen/huubhuub/pull/76) [`f93d50f`](https://github.com/Thijmen/huubhuub/commit/f93d50f7d87f3f1ff67c669ec4485fb4cb4bf144) Thanks [@Thijmen](https://github.com/Thijmen)! - Fix the app invite QR code not showing up when you make a new invite for someone from the People page, so you can sign in a new phone again. Other pop-ups opened from a person's card (Link with…, Preview prompt) now show up properly too.
+
 ## 0.7.1
 
 ### Patch Changes
