@@ -312,6 +312,8 @@ export interface ThreadRow {
   busy: boolean
   /** The Telegram user the conversation is with, if known. */
   userId: number | null
+  /** Display name of that user: their name, @username or "user <id>". */
+  user: string | null
 }
 
 export type Tokens = { input: number; output: number; reasoning: number; cache: { read: number; write: number } }

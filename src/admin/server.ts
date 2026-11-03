@@ -6,7 +6,7 @@ import { parseUsd, type Config } from "../config"
 import { isEnvName, mask, parseEnvText, planEnvImport } from "../env-import"
 import { normalizeServer, parseMcpImport } from "../mcp-import"
 import type { Bridge, McpConfig } from "../opencode"
-import { cleanMemory, MemoryError, PERSONA_MAX_CHARS, type Personas } from "../personas"
+import { cleanMemory, displayName, MemoryError, PERSONA_MAX_CHARS, type Personas } from "../personas"
 import type { QuestionAction } from "../question"
 import { describe, SpecError } from "../schedule-spec"
 import type { ScheduleService, TaskInput } from "../schedule-service"
@@ -699,6 +699,7 @@ async function threadRows(d: Deps, rows: ChatState[]) {
   return Promise.all(
     rows.map(async (r) => {
       const s = await d.bridge.getSession(r.sessionID).catch(() => undefined)
+      const userId = r.userId ?? d.store.ownerOfChat(r.chatId)
       return {
         chatId: r.chatId,
         threadId: r.threadId,
@@ -710,7 +711,8 @@ async function threadRows(d: Deps, rows: ChatState[]) {
         cost: s?.cost ?? 0,
         tokens: s ? s.tokens.input + s.tokens.output : 0,
         busy: r.sessionID in active,
-        userId: r.userId ?? d.store.ownerOfChat(r.chatId),
+        userId,
+        user: userId === null ? null : displayName(d.store.person(userId) ?? { id: userId, name: null, username: null }),
       }
     }),
   )
