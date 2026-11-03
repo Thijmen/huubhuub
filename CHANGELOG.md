@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.7.1
+
+### Patch Changes
+
+- [#74](https://github.com/Thijmen/huubhuub/pull/74) [`4c5666e`](https://github.com/Thijmen/huubhuub/commit/4c5666e716e7b8546f561a734ef6f5f30ab119d7) Thanks [@Thijmen](https://github.com/Thijmen)! - App changes now reach phones as soon as they're merged, as an over-the-air update, instead of waiting for the next release. Changes to the app's native code or to the app API still ship with a release.
+
 ## 0.7.0
 
 ### Minor Changes
