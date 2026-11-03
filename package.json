@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "changeset": "changeset",
-    "release": "changeset git-tag"
+    "release": "changeset git-tag",
+    "docs": "bun site/build.ts --serve"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.1",
