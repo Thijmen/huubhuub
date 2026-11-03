@@ -41,11 +41,11 @@ const config: ExpoConfig = {
   runtimeVersion: { policy: "fingerprint" },
   ...(projectId ? { updates: { url: `https://u.expo.dev/${projectId}`, requestHeaders: { "expo-channel-name": UPDATES_CHANNEL } }, extra: { eas: { projectId } } } : {}),
   ios: {
-    bundleIdentifier: "nl.thijmen.huubhuub",
+    bundleIdentifier: "dev.thijmen.apps.huubhuub",
     supportsTablet: false,
   },
   android: {
-    package: "nl.thijmen.huubhuub",
+    package: "dev.thijmen.apps.huubhuub",
     versionCode,
     adaptiveIcon: {
       backgroundColor: "#E85D04",

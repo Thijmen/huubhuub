@@ -36,7 +36,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PACKAGE: nl.thijmen.huubhuub
+  PACKAGE: dev.thijmen.apps.huubhuub
   CHANNEL: production
 
 jobs:

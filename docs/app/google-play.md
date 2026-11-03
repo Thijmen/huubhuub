@@ -32,7 +32,9 @@ The alias has to be `upload`.
 ### 2. Firebase
 
 Push notifications need Firebase's `google-services.json` in the build (Firebase console → project settings →
-the Android app `nl.thijmen.huubhuub`):
+the Android app `dev.thijmen.apps.huubhuub`). Older setups registered `nl.thijmen.huubhuub`: add an Android app
+with the new package name to the same Firebase project and download the file again, or the build fails with
+"No matching client found for package name". The FCM key in EAS stays the same.
 
 ```sh
 gh secret set GOOGLE_SERVICES_JSON < google-services.json
@@ -44,7 +46,7 @@ gh secret set GOOGLE_SERVICES_JSON < google-services.json
 2. Run **App release** by hand (Actions → App release → Run workflow, tick "build"). Without the Play service
    account it stops after building. Download the AAB from the run's artifacts.
 3. **Testing → Internal testing → Create new release**, keep Play App Signing on (the default), upload the AAB
-   and roll it out. The package name, `nl.thijmen.huubhuub`, is fixed from then on. The API can only upload to
+   and roll it out. The package name, `dev.thijmen.apps.huubhuub`, is fixed from then on. The API can only upload to
    an app that already has one build, so this first one is by hand.
 4. Add testers (an email list) on the internal testing track and open the opt-in link on the phone.
 

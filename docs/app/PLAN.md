@@ -120,7 +120,7 @@ Milestones 1 to 4 are built (October 2026). Milestone 1 is released (huubhuub 0.
 ## What Thijmen needs to do
 
 - Create an Expo account, run `bunx eas-cli init` in `app/`, and put the project ID and owner in `app/app.config.ts`. Add an access token as `EXPO_TOKEN` in the repo's Actions secrets. Google Play: follow [google-play.md](google-play.md).
-- Create a Firebase project, add an Android app with the package name `nl.thijmen.huubhuub`, add `google-services.json` as the repository secret `GOOGLE_SERVICES_JSON`, and upload an FCM v1 service account key (`eas credentials`). Without this, push doesn't work on Android.
+- Create a Firebase project, add an Android app with the package name `dev.thijmen.apps.huubhuub`, add `google-services.json` as the repository secret `GOOGLE_SERVICES_JSON`, and upload an FCM v1 service account key (`eas credentials`). Without this, push doesn't work on Android.
 - Pick a hostname for the app API (e.g. `huub-app.<domain>`), route it to `APP_PORT` in the cluster with TLS, and set `APP_PUBLIC_URL`.
 - Voice notes in the app need the same AWS credentials Telegram voice notes already use.
 
