@@ -95,7 +95,7 @@ Invite links look like `huubhuub://pair?server=https%3A%2F%2Fhuub.example.com&co
 ## Build and release
 
 - `runtimeVersion: { policy: "fingerprint" }` so OTA updates only reach builds with matching native code.
-- Google Play (see [google-play.md](google-play.md)): each huubhuub release calls `.github/workflows/app-release.yml`, which builds an AAB on GitHub Actions and uploads it to the internal testing track when the fingerprint has no Play build yet, and publishes an OTA update on the `production` channel otherwise. Pull requests (`.github/workflows/app.yml`) run typecheck and tests and say which of the two the next release does. (Until November 2026 this was a sideloaded APK on the `app-android` GitHub release.)
+- Google Play (see [google-play.md](google-play.md)): merging app changes to main publishes an OTA update on the `production` channel right away (unless the native code or `src/app-api/` changed since the last release). Each huubhuub release calls `.github/workflows/app-release.yml`, which builds an AAB on GitHub Actions and uploads it to the internal testing track when the fingerprint has no Play build yet. Pull requests (`.github/workflows/app.yml`) run typecheck and tests and say what merging ships. (Until November 2026 this was a sideloaded APK on the `app-android` GitHub release.)
 
 ## Status
 
@@ -103,7 +103,7 @@ Milestones 1 to 4 are built (October 2026). Milestone 1 is released (huubhuub 0.
 
 - Server: person IDs and Telegram links, invites and device tokens, the app API with live events, Telegram sync and echo, push notifications, `/app`, invites and signed-in phones on the People page. Voice notes (AAC decoded with `faad`) and photos, pin/archive/search, and the settings endpoints. Covered by tests (`src/app-api/*.test.ts`, `src/chats.test.ts`, `src/audio.test.ts`).
 - App: sign-in, conversation list with search, pinned and archived conversations, chat with live streaming, markdown, tool activity, stop, question cards, voice notes and photos, push, settings (persona, memory, reminders, spending), English and Dutch, "Zondag" theme and icons. Typechecks and bundles for Android.
-- CI: `.github/workflows/app.yml` (checks on pull requests) and `.github/workflows/app-release.yml` (Google Play build or OTA update with each release).
+- CI: `.github/workflows/app.yml` (checks on pull requests) and `.github/workflows/app-release.yml` (OTA updates from main, Google Play builds with each release).
 
 ## Milestones
 

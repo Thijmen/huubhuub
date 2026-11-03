@@ -1,12 +1,22 @@
 # Google Play
 
-The Android app ships through Google Play. Every huubhuub release runs `.github/workflows/app-release.yml`:
+The Android app ships through Google Play, with over-the-air updates in between
+(`.github/workflows/app-release.yml`):
 
-- **Native code changed** (a fingerprint without a `play/<fingerprint>` tag): GitHub Actions builds an AAB,
-  signs it with the upload key and uploads it to the **internal testing** track. Promote it to production in
-  the Play Console by hand.
-- **Only JavaScript changed**: an over-the-air update on the `production` channel (EAS Update). Play builds
-  download it in the background.
+- **Merging to main** with app changes publishes an over-the-air update on the `production` channel (EAS
+  Update) right away. Play builds download it in the background. It's skipped when:
+  - the native code changed: no installed app could run the update. The next release builds it for Play.
+  - `src/app-api/` changed since the last release: the bot only deploys on a release, so the update waits for
+    the release instead of calling an API the running bot doesn't have yet. Changes elsewhere in the bot
+    aren't caught, so keep app-facing server changes in `src/app-api/`.
+- **Each huubhuub release**:
+  - **Native code changed** (a fingerprint without a `play/<fingerprint>` tag): GitHub Actions builds an AAB,
+    signs it with the upload key and uploads it to the **internal testing** track. Promote it to production in
+    the Play Console by hand.
+  - **Otherwise**: an over-the-air update when `app/` changed since the previous release, which catches up
+    anything main had to hold back.
+
+Pull requests say which of these merging does.
 
 The app's version is the bot's version (root `package.json`). Its versionCode is derived from it: 0.7.0
 becomes 7000, 1.4.2 becomes 1004002. Google Play rejects a versionCode it already has. That only happens when
@@ -34,7 +44,8 @@ The alias has to be `upload`.
 Push notifications need Firebase's `google-services.json` in the build (Firebase console → project settings →
 the Android app `dev.thijmen.apps.huubhuub`). Older setups registered `nl.thijmen.huubhuub`: add an Android app
 with the new package name to the same Firebase project and download the file again, or the build fails with
-"No matching client found for package name". The FCM key in EAS stays the same.
+"No matching client found for package name". EAS keeps Android credentials per app id, so upload the FCM v1 key
+again for the new one (`bunx eas-cli credentials`, or the project's credentials page on expo.dev).
 
 ```sh
 gh secret set GOOGLE_SERVICES_JSON < google-services.json
@@ -68,7 +79,8 @@ It can take a few hours before Google accepts a new service account.
 ### 5. Expo
 
 Over-the-air updates and push still use the Expo project in `app/app.config.ts`. `EXPO_TOKEN` (an Expo
-access token) has to be set as a repository secret. The FCM v1 key for push stays in EAS (`eas credentials`).
+access token) has to be set as a repository secret. The FCM v1 key for push lives in EAS, under the app id
+`dev.thijmen.apps.huubhuub` (`eas credentials`).
 
 ## Things to know
 

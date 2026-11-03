@@ -1,11 +1,12 @@
-# Checks for the phone app (app/): typecheck and tests on pull requests and pushes to main, and on pull
-# requests whether the next release ships it as an over-the-air update or as a new Google Play build. Shipping
-# happens with each huubhuub release, in app-release.yml.
+# The phone app (app/): typecheck and tests on pull requests and pushes to main. On pull requests, whether
+# merging ships as an over-the-air update or needs a new Google Play build. On pushes to main, the
+# over-the-air update itself (app-release.yml with from-main; it explains when that's skipped). New Play
+# builds come with each huubhuub release.
 name: App
 
 on:
   pull_request:
-    paths: ["app/**", "src/app-api/protocol.ts", ".github/workflows/app.yml", ".github/workflows/app-release.yml"]
+    paths: ["app/**", "src/app-api/**", ".github/workflows/app.yml", ".github/workflows/app-release.yml"]
   push:
     branches: [main]
     paths: ["app/**", "src/app-api/protocol.ts", ".github/workflows/app.yml", ".github/workflows/app-release.yml"]
@@ -34,6 +35,7 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         # Installed apps only get over-the-air updates made for their own native code. A changed fingerprint
         # means the next release uploads a new build to Google Play, and phones need it before they get anything newer.
+        # (Checked against the base branch; app-release.yml checks against what's actually on Play.)
         run: |
           set -o pipefail
           fingerprint() { bunx expo-updates fingerprint:generate --platform android | jq -re .hash; }
@@ -43,9 +45,22 @@ jobs:
           base=$(cd "$RUNNER_TEMP/base/app" && bun install --frozen-lockfile >/dev/null && fingerprint)
           echo "Fingerprint: base $base, this pull request $head"
           if [ "$head" = "$base" ]; then
-            echo "Native code unchanged (\`$head\`): the next release ships this as an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
+            if git diff --quiet "$BASE" HEAD -- ../src/app-api ':(exclude)../src/app-api/*.test.ts'; then
+              echo "Native code unchanged (\`$head\`): merging ships this as an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Native code unchanged (\`$head\`), but the app API changes: the over-the-air update waits for the next release, which deploys the bot too." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            echo "::warning::This changes the app's native code (fingerprint $base → $head). The next release uploads a new build to Google Play; installed apps get no further updates until Play has updated them."
+            echo "::warning::This changes the app's native code (fingerprint $base → $head). Merging ships nothing to phones: the next release uploads a new build to Google Play, and installed apps get no further updates until Play has updated them."
             echo "Native code changed (\`$base\` → \`$head\`): the next release uploads a new build to Google Play." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  update:
+    needs: check
+    if: github.event_name == 'push'
+    permissions:
+      contents: write # granted because app-release.yml's build job asks for it; it never runs from here
+    uses: ./.github/workflows/app-release.yml
+    with:
+      from-main: true
+    secrets: inherit

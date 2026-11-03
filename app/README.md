@@ -41,10 +41,10 @@ and the server can't drift apart.
 
 ## Builds and updates
 
-The app ships with each huubhuub release (`.github/workflows/app-release.yml`, called from CI). When the native
-code changed, GitHub Actions builds an AAB and uploads it to the Google Play internal testing track; otherwise
-it publishes an over-the-air update on the `production` channel. Pull requests say which of the two the next
-release will do. Setup and details: [../docs/app/google-play.md](../docs/app/google-play.md).
+Merging app changes to main publishes an over-the-air update on the `production` channel right away. New
+native code goes to Google Play with the next huubhuub release: GitHub Actions builds an AAB and uploads it to
+the internal testing track (`.github/workflows/app-release.yml`). Pull requests say which of the two merging
+does. Setup and details: [../docs/app/google-play.md](../docs/app/google-play.md).
 
 The app's version is the bot's (the root `package.json`), and its versionCode is derived from it.
 
