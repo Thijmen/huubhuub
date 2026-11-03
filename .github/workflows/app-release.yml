@@ -1,17 +1,22 @@
-# Ships the phone app (app/) with each huubhuub release. CI's release job calls this after it tags vX.Y.Z; tags
-# pushed by GITHUB_TOKEN don't start workflows themselves, so it can't listen for the tag.
+# Ships the phone app (app/). Two callers:
 #
-# Each release does one of two things, depending on the app's native fingerprint (its native code and config):
-#   - a fingerprint without a Google Play build yet: build an AAB here on the runner (expo prebuild + Gradle),
-#     sign it with the upload key and upload it to the Play internal testing track. Then push the tag
-#     play/<fingerprint>, which marks that this native code is on Play.
-#   - a fingerprint that's already on Play: publish an over-the-air update (EAS Update) on the "production"
-#     channel, but only when app/ changed since the previous release.
-# Promote internal builds to production in the Play Console by hand.
+# - CI's release job, after it tags vX.Y.Z (tags pushed by GITHUB_TOKEN don't start workflows themselves, so it
+#   can't listen for the tag). Depending on the app's native fingerprint (its native code and config):
+#     - a fingerprint without a Google Play build yet: build an AAB here on the runner (expo prebuild + Gradle),
+#       sign it with the upload key and upload it to the Play internal testing track. Then push the tag
+#       play/<fingerprint>, which marks that this native code is on Play.
+#     - a fingerprint that's already on Play: publish an over-the-air update (EAS Update) on the "production"
+#       channel, when app/ changed since the previous release.
+#   Promote internal builds to production in the Play Console by hand.
 #
-# Running it by hand does the same for the current commit. Tick "build" to build an AAB anyway, e.g. the very
-# first one, which has to be uploaded in the Play Console by hand before the API accepts uploads. Every build
-# is also kept as a workflow artifact.
+# - app.yml, on pushes to main that change app/ (`from-main`): an over-the-air update straight away, so app
+#   changes don't wait for a release. Never a Play build. Skipped when the native code isn't on Play yet (no
+#   installed app could run it; the next release builds it), and when src/app-api/ changed since the last
+#   release: the bot only deploys on a release, and the app shouldn't call an API it doesn't have yet.
+#
+# Running it by hand does the release variant for the current commit. Tick "build" to build an AAB anyway, e.g.
+# the very first one, which has to be uploaded in the Play Console by hand before the API accepts uploads.
+# Every build is also kept as a workflow artifact.
 #
 # Secrets (setup steps in docs/app/google-play.md):
 #   ANDROID_UPLOAD_KEYSTORE           the upload keystore (PKCS12, key alias "upload"), base64
@@ -24,6 +29,11 @@ name: App release
 
 on:
   workflow_call:
+    inputs:
+      from-main:
+        description: Called for a push to main; only publish an over-the-air update
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       build:
@@ -45,6 +55,7 @@ jobs:
     outputs:
       fingerprint: ${{ steps.plan.outputs.fingerprint }}
       version: ${{ steps.plan.outputs.version }}
+      label: ${{ steps.plan.outputs.label }}
       build: ${{ steps.plan.outputs.build }}
       update: ${{ steps.plan.outputs.update }}
     defaults:
@@ -68,25 +79,49 @@ jobs:
       - id: plan
         env:
           FORCE_BUILD: ${{ inputs.build == true }}
+          FROM_MAIN: ${{ inputs.from-main == true }}
           MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -o pipefail
           fingerprint=$(bunx expo-updates fingerprint:generate --platform android | jq -re .hash)
           version=$(jq -r .version ../package.json)
+          on_play=false
+          git rev-parse -q --verify "refs/tags/play/$fingerprint" >/dev/null && on_play=true
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           build=false update=false
-          if [ "$FORCE_BUILD" = true ] || ! git rev-parse -q --verify "refs/tags/play/$fingerprint" >/dev/null; then
-            build=true
-            echo "Native code \`$fingerprint\` isn't on Google Play yet: building version $version." >> "$GITHUB_STEP_SUMMARY"
-          else
-            previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
-            if [ "$MANUAL" = true ] || [ -z "$previous" ] || ! git diff --quiet "$previous" HEAD -- . ../src/app-api/protocol.ts; then
-              update=true
-              echo "Native code \`$fingerprint\` is already on Google Play: publishing an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FROM_MAIN" = true ]; then
+            echo "label=huubhuub $version + ${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            release=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null || true)
+            # The commits in this push; HEAD^ when the previous head is unknown (a new branch or a force push).
+            git cat-file -e "${BEFORE}^{commit}" 2>/dev/null || BEFORE=HEAD^
+            if git diff --quiet "$BEFORE" HEAD -- .; then
+              echo "This push doesn't change app/: nothing to ship." >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$on_play" != true ]; then
+              echo "::warning::The app's native code (\`$fingerprint\`) isn't on Google Play yet, so no installed app can run this. The next release builds it."
+              echo "Native code \`$fingerprint\` isn't on Google Play yet: no update; the next release builds it." >> "$GITHUB_STEP_SUMMARY"
+            elif [ -n "$release" ] && ! git diff --quiet "$release" HEAD -- ../src/app-api ':(exclude)../src/app-api/*.test.ts'; then
+              echo "::notice::src/app-api changed since $release, and the bot only deploys on a release. The app update ships with the next release."
+              echo "The app API changed since $release: the update waits for the next release, which deploys the bot too." >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "The app hasn't changed since $previous: nothing to ship." >> "$GITHUB_STEP_SUMMARY"
+              update=true
+              echo "Publishing an over-the-air update for native code \`$fingerprint\`." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "label=huubhuub $version" >> "$GITHUB_OUTPUT"
+            if [ "$FORCE_BUILD" = true ] || [ "$on_play" != true ]; then
+              build=true
+              echo "Native code \`$fingerprint\` isn't on Google Play yet: building version $version." >> "$GITHUB_STEP_SUMMARY"
+            else
+              previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
+              if [ "$MANUAL" = true ] || [ -z "$previous" ] || ! git diff --quiet "$previous" HEAD -- . ../src/app-api/protocol.ts; then
+                update=true
+                echo "Native code \`$fingerprint\` is already on Google Play: publishing an over-the-air update." >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "The app hasn't changed since $previous: nothing to ship." >> "$GITHUB_STEP_SUMMARY"
+              fi
             fi
           fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
@@ -225,10 +260,10 @@ jobs:
       - name: Publish the update
         env:
           FINGERPRINT: ${{ needs.plan.outputs.fingerprint }}
-          VERSION: ${{ needs.plan.outputs.version }}
+          LABEL: ${{ needs.plan.outputs.label }}
         run: |
           # The first update creates the channel (and a branch with the same name) that Play builds listen to.
           eas channel:view "$CHANNEL" --non-interactive >/dev/null 2>&1 || eas channel:create "$CHANNEL" --non-interactive
           eas update --channel "$CHANNEL" --environment production --platform android --non-interactive \
-            --message "huubhuub $VERSION"
+            --message "$LABEL"
           echo "Published an update for native code \`$FINGERPRINT\`; installed apps download it in the background and switch to it the next time they're opened." >> "$GITHUB_STEP_SUMMARY"
