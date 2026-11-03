@@ -31,7 +31,7 @@ export function ThreadsPage({ selected, open }: { selected?: string; open: (sess
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return (data ?? []).filter((r) => !q || [r.title, r.model, r.agent, String(r.chatId), r.sessionID].some((v) => v?.toLowerCase().includes(q)))
+    return (data ?? []).filter((r) => !q || [r.title, r.user, r.model, r.agent, String(r.chatId), r.sessionID].some((v) => v?.toLowerCase().includes(q)))
   }, [data, query])
 
   const totals = useMemo(() => (data ?? []).reduce((acc, r) => ({ cost: acc.cost + r.cost, tokens: acc.tokens + r.tokens }), { cost: 0, tokens: 0 }), [data])
@@ -72,6 +72,7 @@ export function ThreadsPage({ selected, open }: { selected?: string; open: (sess
                   <span className="chat-item-time">{r.busy ? <span className="live-dot" title="Running" /> : relTime(r.updatedAt)}</span>
                 </div>
                 <div className="chat-item-meta">
+                  {r.user && <span className="chat-item-user" title={`Conversation with ${r.user}`}>{r.user}</span>}
                   <span className={`chat-where ${r.threadId ? "topic" : ""}`}>{r.threadId ? `# ${r.threadId}` : "main"}</span>
                   <span className="mono">{shortModel(r.model)}</span>
                   <span className="chat-item-cost mono">${r.cost.toFixed(r.cost < 1 ? 3 : 2)}</span>
@@ -83,7 +84,7 @@ export function ThreadsPage({ selected, open }: { selected?: string; open: (sess
       </aside>
       <section className="chat-pane">
         {selected ? (
-          <ChatPane key={selected} sessionID={selected} onBack={() => open()} onActivity={reload} />
+          <ChatPane key={selected} sessionID={selected} user={data?.find((r) => r.sessionID === selected)?.user ?? null} onBack={() => open()} onActivity={reload} />
         ) : (
           <div className="chat-placeholder">
             <Empty icon="💬" title="Pick a conversation">
@@ -139,7 +140,7 @@ function NewConversation({ threads, onClose, onCreated }: { threads: ThreadRow[]
   )
 }
 
-function ChatPane({ sessionID, onBack, onActivity }: { sessionID: string; onBack: () => void; onActivity: () => void }) {
+function ChatPane({ sessionID, user, onBack, onActivity }: { sessionID: string; user: string | null; onBack: () => void; onActivity: () => void }) {
   const toast = useToast()
   const [conv, setConv] = useState<Conversation>()
   const [error, setError] = useState<string>()
@@ -264,7 +265,7 @@ function ChatPane({ sessionID, onBack, onActivity }: { sessionID: string; onBack
 
   return (
     <>
-      <ChatHeader conv={conv} live={live} onBack={onBack} onChanged={refresh} />
+      <ChatHeader conv={conv} user={user} live={live} onBack={onBack} onChanged={refresh} />
       <div className="chat-scroll" ref={scroller} onScroll={onScroll}>
         <div className="chat-thread">
           {conv.older && (
@@ -291,7 +292,7 @@ function ChatPane({ sessionID, onBack, onActivity }: { sessionID: string; onBack
   )
 }
 
-function ChatHeader({ conv, live, onBack, onChanged }: { conv: Conversation; live: "connecting" | "live" | "offline"; onBack: () => void; onChanged: () => Promise<void> }) {
+function ChatHeader({ conv, user, live, onBack, onChanged }: { conv: Conversation; user: string | null; live: "connecting" | "live" | "offline"; onBack: () => void; onChanged: () => Promise<void> }) {
   const { session, key } = conv
   const link = key ? telegramLink(key, conv.bot) : null
   const tokens = session.tokens.input + session.tokens.output
@@ -314,6 +315,7 @@ function ChatHeader({ conv, live, onBack, onChanged }: { conv: Conversation; liv
           )}
         </div>
         <div className="chat-head-meta">
+          {user && <span className="chat-head-user">with {user}</span>}
           {key && (
             <span className="mono">
               {key.chatId}

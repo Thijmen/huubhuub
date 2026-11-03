@@ -2185,6 +2185,19 @@ kbd {
   color: var(--faint);
 }
 
+.chat-item-user {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.chat-head-user {
+  color: var(--text);
+}
+
 .chat-where {
   padding: 1px 7px;
   border-radius: 999px;
