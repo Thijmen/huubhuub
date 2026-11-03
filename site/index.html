@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HuubHuub · your own AI agent, right in Telegram</title>
+    <meta name="description" content="HuubHuub is a self-hosted Telegram bot and phone app with a real coding agent behind it. Every conversation gets its own thread, memory, schedules, GitHub access and a spending limit." />
+    <meta property="og:title" content="HuubHuub · your own AI agent, right in Telegram" />
+    <meta property="og:description" content="A self-hosted Telegram bot and phone app powered by OpenCode. Threads, voice notes, memory, schedules, GitHub and spending limits." />
+    <meta property="og:image" content="https://thijmen.github.io/huubhuub/assets/og.png" />
+    <meta property="og:url" content="https://thijmen.github.io/huubhuub/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#FFF8F0" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="assets/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="wrap">
+        <a class="brand" href="./"><img src="assets/huub.svg" alt="" /><span>Huub<b>Huub</b></span></a>
+        <button class="menu-btn" data-toggle=".nav" aria-label="Menu" aria-expanded="false">☰</button>
+        <nav class="nav">
+          <a href="#why">Why</a>
+          <a href="#features">Features</a>
+          <a href="#tour">Tour</a>
+          <a href="#how">How it works</a>
+          <a href="docs/">Docs</a>
+          <a class="gh" href="https://github.com/Thijmen/huubhuub"
+            ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <!-- ================= hero ================= -->
+    <section class="hero">
+      <div class="wrap">
+        <div>
+          <a class="pill" href="docs/changelog/"><b>v{{version}}</b> See what's new →</a>
+          <h1>Your own AI agent, right in <em>Telegram</em>.</h1>
+          <p class="lede">
+            HuubHuub puts a real coding agent in the chat app you already use. Every conversation gets its own thread. Huub
+            <strong>remembers who you are</strong>, <strong>runs things on a schedule</strong>, works in your
+            <strong>GitHub repos</strong> and <strong>sticks to a budget</strong>. It all runs on your own server.
+          </p>
+          <div class="cta">
+            <a class="btn btn-primary" href="docs/setup/">Get started <span aria-hidden="true">→</span></a>
+            <a class="btn btn-ghost" href="#tour">Take the tour</a>
+          </div>
+          <div class="works-with">
+            Powered by <span>OpenCode</span> · works with <span>Anthropic</span><span>OpenAI</span><span>OpenRouter</span><span>Google</span><span>Ollama</span><span>+ 70 more</span>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="A HuubHuub conversation in Telegram">
+          <div class="tg-phone">
+            <div class="tg">
+              <div class="tg-status"><span>10:44</span><span>●●● ▾ ▮</span></div>
+              <div class="tg-head">
+                <span class="back">‹</span>
+                <span class="av"><img src="assets/icon.svg" alt="" /></span>
+                <div><b>🐛 Flaky orders test</b><small>HuubHuub · topic</small></div>
+              </div>
+              <div class="tg-body">
+                <span class="tg-day">Today</span>
+                <div class="msg out">The orders test in acme/api keeps failing on CI 😩 can you take a look?<span class="t">10:41 ✓✓</span></div>
+                <div class="msg">
+                  Found it 🎯 The test makes three orders with <code>Promise.all</code>, so they often share a <code>createdAt</code>. I added <code>id</code> as a tie-breaker and ran it 50×: <b>50 pass, 0 fail</b>.<br /><br />PR is up: <a href="#">acme/api#418</a><span class="t">10:43</span>
+                </div>
+                <div class="msg">Want me to check other queries for the same bug? <b>(1/1)</b><span class="t">10:43</span></div>
+                <div class="kbd">
+                  <div><span>All of src/</span><span>Only webhooks</span></div>
+                  <span class="full">✖ Skip</span>
+                </div>
+                <div class="msg out">
+                  <div class="voice">
+                    <span class="play"></span>
+                    <div>
+                      <div class="wave">
+                        <i style="height: 6px"></i><i style="height: 12px"></i><i style="height: 18px"></i><i style="height: 9px"></i><i style="height: 20px"></i><i style="height: 14px"></i><i style="height: 7px"></i><i style="height: 16px"></i><i style="height: 22px"></i><i style="height: 11px"></i><i style="height: 6px"></i><i style="height: 15px"></i><i style="height: 19px"></i><i style="height: 8px"></i><i style="height: 13px"></i><i style="height: 5px"></i><i style="height: 10px"></i><i style="height: 17px"></i><i style="height: 7px"></i><i style="height: 4px"></i>
+                      </div>
+                      <small>0:04</small>
+                    </div>
+                  </div>
+                  <span class="t">10:44 ✓✓</span>
+                </div>
+                <div class="msg">🎤 <i>All of them. And remind me tomorrow at nine to merge it.</i><span class="t">10:44</span></div>
+                <div class="msg">On it. Three more places sort on a timestamp alone:<span class="status">🔎 Searching the files… 8s</span></div>
+              </div>
+              <div class="tg-input"><i>📎</i><span>Message</span><i class="mic">🎙</i></div>
+            </div>
+          </div>
+          <img class="app-phone" src="assets/screens/phone-list-light.png" alt="The HuubHuub phone app: a list of conversations" />
+          <div class="sticker s1"><span class="dot">⏰</span><div>Scheduled: merge acme/api#418<small>Tomorrow · 09:00</small></div></div>
+          <div class="sticker s2"><span class="dot">🧠</span><div>Remembered<small>Works on acme/api</small></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= problem → solution ================= -->
+    <section class="block problems" id="why">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">What it solves</span>
+          <h2>Strong AI agents live in a terminal. People live in their chats.</h2>
+          <p>
+            Coding agents can run commands, edit files, open pull requests and call tools. But they sit in a terminal
+            on someone's laptop, start from zero every time, and nobody watches the bill. HuubHuub runs one on a server
+            and lets your whole household or team talk to it from their phone.
+          </p>
+        </div>
+        <div class="ps-grid">
+          <div class="ps">
+            <div class="before"><b>"I'll do it when I'm back at my laptop."</b>The agent only works where its terminal is.</div>
+            <div class="after">Message Huub from anywhere: type, send a photo or record a voice note in Telegram or the phone app. Replies stream in live.</div>
+          </div>
+          <div class="ps">
+            <div class="before"><b>One endless chat that loses the plot.</b>Everything piles up in one place, and context gets mixed.</div>
+            <div class="after">Every conversation gets its own Telegram topic and its own OpenCode session. The topic is named after what you talked about.</div>
+          </div>
+          <div class="ps">
+            <div class="before"><b>"Who are you again?"</b>Every session starts as a stranger.</div>
+            <div class="after">A persona and long-term memory per person. Huub knows your name, your dog and your repos, and you decide what it keeps.</div>
+          </div>
+          <div class="ps">
+            <div class="before"><b>Only answers when you ask.</b>You still have to remember to check on things.</div>
+            <div class="after">Scheduled prompts and shell commands: a morning briefing, or a check that only wakes the model when there's a PR to review.</div>
+          </div>
+          <div class="ps">
+            <div class="before"><b>A shared API key and a surprise bill.</b>No idea who spent what, or on which model.</div>
+            <div class="after">Costs per conversation, model and person, with daily and monthly limits that warn at 80% and stop at 100%.</div>
+          </div>
+          <div class="ps">
+            <div class="before"><b>Your conversations on someone else's server.</b>And keys pasted all over.</div>
+            <div class="after">One Docker container on your own machine. A web admin UI for providers, MCP servers, people and settings.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= features ================= -->
+    <section class="block" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Features</span>
+          <h2>Everything a good assistant needs, and nothing you have to babysit.</h2>
+        </div>
+        <div class="features">
+          <a class="feature" href="docs/threads/"><div class="ic">🧵</div><h3>A thread per conversation</h3><p>Each chat opens its own Telegram topic with its own session. <code>/new</code> starts fresh.</p></a>
+          <a class="feature" href="docs/"><div class="ic">⚡</div><h3>Live streaming replies</h3><p>Replies stream in as a draft with a stop button, with short status lines while tools run.</p></a>
+          <a class="feature" href="docs/questions/"><div class="ic">🙋</div><h3>Questions as buttons</h3><p>When Huub needs a decision, you get tappable options. Or just type or say your answer.</p></a>
+          <a class="feature" href="docs/"><div class="ic">🎙️</div><h3>Voice notes and photos</h3><p>Voice is transcribed with Amazon Transcribe. Images and text files go straight to the model.</p></a>
+          <a class="feature" href="docs/scheduled-tasks/"><div class="ic">⏰</div><h3>Scheduled tasks</h3><p>Cron, intervals or one-off. Prompts, shell commands, or a cheap pre-check before the model runs.</p></a>
+          <a class="feature" href="docs/personas-and-memory/"><div class="ic">🧠</div><h3>Personas and memory</h3><p>Who the bot is, per person. Memory is off, saved when asked, or saved automatically.</p></a>
+          <a class="feature" href="docs/costs-and-spending-limits/"><div class="ic">💸</div><h3>Costs and limits</h3><p>See spend by model, source and person. Set daily and monthly caps. Check it with <code>/costs</code>.</p></a>
+          <a class="feature" href="docs/github/"><div class="ic">🐙</div><h3>GitHub, done right</h3><p>One GitHub App gives the agent <code>gh</code> and <code>git</code> on the repos you pick. No tokens to paste.</p></a>
+          <a class="feature" href="docs/skills/"><div class="ic">📚</div><h3>Skills from your repos</h3><p>Pull <code>SKILL.md</code> skills from private repos. They sync on their own and reload live.</p></a>
+          <a class="feature" href="docs/admin-ui/"><div class="ic">🔌</div><h3>Any model, any MCP server</h3><p>Paste an API key, a whole <code>.env</code>, or sign in with OAuth. Paste Claude Desktop or Cursor MCP configs.</p></a>
+          <a class="feature" href="docs/phone-app/"><div class="ic">📱</div><h3>A phone app too</h3><p>An Android app for people who'd rather not use Telegram, with push notifications. It syncs with Telegram.</p></a>
+          <a class="feature" href="docs/admin-ui/"><div class="ic">🛠️</div><h3>A control room</h3><p>Read and reply to every conversation live, with each tool call, token and cent, from a web admin UI.</p></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= tour ================= -->
+    <section class="block tour" id="tour">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">How it looks</span>
+          <h2>Three ways in. One Huub.</h2>
+          <p>Talk to Huub in Telegram or the phone app, and run the place from the admin UI. Conversations, personas, memory and limits are shared across all three.</p>
+        </div>
+
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" aria-controls="p-telegram" id="t-telegram">✈️ Telegram</button>
+          <button role="tab" aria-selected="false" aria-controls="p-app" id="t-app">📱 Phone app</button>
+          <button role="tab" aria-selected="false" aria-controls="p-admin" id="t-admin">🛠️ Admin UI</button>
+        </div>
+
+        <!-- Telegram -->
+        <div class="panel tg-panel" id="p-telegram" role="tabpanel" aria-labelledby="t-telegram">
+          <div class="panel-grid">
+            <div class="tg-phone">
+              <div class="tg">
+                <div class="tg-status"><span>08:02</span><span>●●● ▾ ▮</span></div>
+                <div class="tg-head">
+                  <span class="back">‹</span>
+                  <span class="av"><img src="assets/icon.svg" alt="" /></span>
+                  <div><b>🐶 Puppy training plan</b><small>HuubHuub · topic</small></div>
+                </div>
+                <div class="tg-body">
+                  <span class="tg-day">Monday</span>
+                  <div class="msg out">Our dog is called Bram btw, he's 5 months old 🐶<span class="t">08:00 ✓✓</span></div>
+                  <div class="msg">Bram! Great name. At five months he'll be teething, so keep the training sessions short and fun: 5 minutes, three times a day.<span class="t">08:00</span></div>
+                  <div class="msg">🧠 <i>Remembered:</i> Has a 5-month-old dog called Bram.<span class="t">08:00</span></div>
+                  <div class="kbd"><span class="full">Forget</span></div>
+                  <div class="msg out">/schedule 0 19 * * * Give me tonight's training exercise for Bram<span class="t">08:01 ✓✓</span></div>
+                  <div class="msg">⏰ <b>Bram's training exercise</b><br />Every day at 19:00. Next run: today, 19:00.<span class="t">08:01</span></div>
+                  <div class="kbd"><div><span>✅ Schedule it</span><span>✖ Cancel</span></div></div>
+                  <div class="msg out">/costs<span class="t">08:02 ✓✓</span></div>
+                  <div class="msg">💸 This conversation: <b>$0.03</b><br />You today: $0.31 of $2.00<br />This month: $4.12 of $25.00<span class="t">08:02</span></div>
+                </div>
+                <div class="tg-input"><i>📎</i><span>Message</span><i class="mic">🎙</i></div>
+              </div>
+            </div>
+            <ul class="points">
+              <li><span>🧵</span><div><b>Topics, named for you</b><p>A message outside a topic starts a new one, renamed as soon as OpenCode titles the session. In groups, every forum topic is its own session.</p></div></li>
+              <li><span>⚡</span><div><b>Watch it work</b><p>In private chats the reply streams in as a live draft with a stop button. Status lines show what's happening: "⚙️ Running tests…", "🌐 Reading github.com…".</p></div></li>
+              <li><span>🙋</span><div><b>Answer with a tap</b><p>Agent questions arrive with a button per option, ticks for multi-select, and a timeout so a run never hangs forever.</p></div></li>
+              <li><span>🧠</span><div><b>Memory you can see</b><p>In automatic mode Huub posts "🧠 Remembered: …" with a Forget button. <code>/memory</code> lists everything and <code>/forget 12</code> removes one.</p></div></li>
+              <li><span>⌨️</span><div><b>Commands when you want them</b><p><code>/new</code>, <code>/stop</code>, <code>/model</code>, <code>/agent</code>, <code>/schedule</code>, <code>/skills</code>, <code>/persona</code>, <code>/costs</code> and more.</p></div></li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Phone app -->
+        <div class="panel" id="p-app" role="tabpanel" aria-labelledby="t-app" hidden>
+          <div class="phones">
+            <figure><img loading="lazy" src="assets/screens/phone-list-light.png" alt="Conversation list, light" /><figcaption><b>Conversations</b>Pinned on top, an emoji per title, and a dot when Huub is waiting for you.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-chat-light.png" alt="A chat while Huub is working" /><figcaption><b>Huub at work</b>Formatted replies, tool activity as small pills, and a stop button.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-question-light.png" alt="An agent question as a card" /><figcaption><b>Questions</b>Big tap targets, with "type your own answer" always there.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-voice-light.png" alt="Recording a voice note" /><figcaption><b>Voice notes</b>Hold to talk. The transcript shows up in the bubble.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-chat-dark.png" alt="A chat in dark mode" /><figcaption><b>Dark mode</b>Warm espresso instead of cold grey, with reminders as cards.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-list-dark.png" alt="Conversation list, dark" /><figcaption><b>Synced with Telegram</b>For people who use both, every conversation shows up in both.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-new-dark.png" alt="A new conversation" /><figcaption><b>A friendly start</b>Starter cards instead of an empty screen.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-question-dark.png" alt="A question in dark mode" /><figcaption><b>Quick decisions</b>Two options, one tap.</figcaption></figure>
+            <figure><img loading="lazy" src="assets/screens/phone-pair.png" alt="Pairing the phone with a QR code" /><figcaption><b>Pair with a QR code</b>Invites work once and expire after a day.</figcaption></figure>
+          </div>
+          <p class="shot-caption">Scroll sideways for more. The sample content is in Dutch, because that's what Huub speaks at home. Personas set the language and tone per person.</p>
+        </div>
+
+        <!-- Admin -->
+        <div class="panel" id="p-admin" role="tabpanel" aria-labelledby="t-admin" hidden>
+          <div class="shot-picker">
+            <button aria-pressed="true" data-url="admin.example.com/threads" data-src="assets/screens/admin-conversation.png" data-alt="A conversation in the admin UI" data-caption="<b>Conversations.</b> Every thread, live: streamed replies, tool calls, reasoning and the tokens and cost of each turn. Reply, stop, or switch model from here, and it's mirrored to Telegram.">Conversations</button>
+            <button aria-pressed="false" data-url="admin.example.com/overview" data-src="assets/screens/admin-overview.png" data-alt="The admin overview" data-caption="<b>Overview.</b> The bot, its thread mode, the default model and agent, providers, MCP servers and the OpenCode server at a glance.">Overview</button>
+            <button aria-pressed="false" data-url="admin.example.com/costs" data-src="assets/screens/admin-costs.png" data-alt="The costs page" data-caption="<b>Costs.</b> Spend over time by model, source or person, and the most expensive sessions. Scroll inside the window.">Costs</button>
+            <button aria-pressed="false" data-url="admin.example.com/people" data-src="assets/screens/admin-people.png" data-alt="The people page" data-caption="<b>People.</b> Each person's persona, memory mode, memories, spending limits and linked phones.">People</button>
+            <button aria-pressed="false" data-url="admin.example.com/schedules" data-src="assets/screens/admin-schedules.png" data-alt="The schedules page" data-caption="<b>Schedules.</b> Every job grouped by chat, with its run history and output. Scroll inside the window.">Schedules</button>
+            <button aria-pressed="false" data-url="admin.example.com/providers" data-src="assets/screens/admin-providers.png" data-alt="The providers page" data-caption="<b>Providers.</b> Search every integration OpenCode knows, then paste a key or sign in with OAuth.">Providers</button>
+          </div>
+          <div class="browser">
+            <div class="bar"><i></i><i></i><i></i><span>admin.example.com/threads</span></div>
+            <div class="viewport"><img data-shot src="assets/screens/admin-conversation.png" alt="A conversation in the admin UI" /></div>
+          </div>
+          <p class="shot-caption"><b>Conversations.</b> Every thread, live: streamed replies, tool calls, reasoning and the tokens and cost of each turn. Reply, stop, or switch model from here, and it's mirrored to Telegram.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= how it works ================= -->
+    <section class="block" id="how">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">How it works</span>
+          <h2>One container. A real agent inside.</h2>
+          <p>
+            HuubHuub is a small Bun service that runs an <a href="https://opencode.ai">OpenCode</a> server next to it.
+            OpenCode does the agent work: models, tools, MCP and the workspace. HuubHuub turns that into conversations
+            people can have.
+          </p>
+        </div>
+        <div class="arch">
+          <div class="arch-col">
+            <div class="node"><span>✈️</span><div><b>Telegram</b><small>Private chats and forum groups, long polling</small></div></div>
+            <div class="node"><span>📱</span><div><b>Phone app</b><small>Android, live events and push notifications</small></div></div>
+            <div class="node"><span>🛠️</span><div><b>Admin UI</b><small>Web, on your network or behind TLS</small></div></div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="core">
+            <h3><img src="assets/huub.svg" alt="" /> HuubHuub</h3>
+            <p>Bun · grammY · SQLite in <code>/data</code></p>
+            <ul>
+              <li>Threads, streaming replies, questions</li>
+              <li>Personas, memory and spending limits per person</li>
+              <li>Scheduler for prompts and shell commands</li>
+              <li>GitHub App tokens, skill sync, MCP overrides</li>
+              <li class="oc"><b>opencode serve</b>: the agent, with <code>/workspace</code> as its working directory</li>
+            </ul>
+          </div>
+          <div class="arrow">→</div>
+          <div class="arch-col">
+            <div class="node"><span>🧠</span><div><b>Model providers</b><small>Anthropic, OpenAI, OpenRouter, Google, local models…</small></div></div>
+            <div class="node"><span>🔌</span><div><b>MCP servers</b><small>Local commands or remote URLs</small></div></div>
+            <div class="node"><span>🐙</span><div><b>GitHub</b><small>Repos and skills through one GitHub App</small></div></div>
+            <div class="node"><span>🎙️</span><div><b>Amazon Transcribe</b><small>Voice notes to text</small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= quick start ================= -->
+    <section class="block" id="start" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Quick start</span>
+          <h2>Up and running in a few minutes.</h2>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <h3>Make a bot</h3>
+            <p>Create a bot with <a href="https://t.me/BotFather">@BotFather</a>, copy its token, and turn on <b>Threaded Mode</b> in its settings.</p>
+            <pre class="term"><span class="p">$ </span>cp .env.example .env
+<span class="c"># TELEGRAM_BOT_TOKEN=123456:ABC…</span></pre>
+          </div>
+          <div class="step">
+            <h3>Start it</h3>
+            <p>One Docker Compose command. Sessions and settings live in a volume and survive restarts.</p>
+            <pre class="term"><span class="p">$ </span>docker compose up -d --build
+<span class="p">$ </span>docker compose logs -f</pre>
+          </div>
+          <div class="step">
+            <h3>Connect a model</h3>
+            <p>Open the admin UI on port 8080, paste an API key (or a whole <code>.env</code>), and say hi to Huub.</p>
+            <pre class="term"><span class="c"># the admin token is printed</span>
+<span class="c"># in the startup log</span>
+<span class="p">→ </span>http://localhost:8080</pre>
+          </div>
+        </div>
+
+        <div class="cta-band">
+          <span class="cta-mark"><img src="assets/huub.svg" alt="" /></span>
+          <div>
+            <h2>Ready to meet Huub?</h2>
+            <p>Read the setup guide, or dig into how every part works.</p>
+          </div>
+          <div class="cta">
+            <a class="btn btn-primary" href="docs/setup/">Setup guide →</a>
+            <a class="btn btn-ghost" href="docs/">Read the docs</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <a class="brand" href="./"><img src="assets/huub.svg" alt="" /><span>Huub<b>Huub</b></span></a>
+        <span>v{{version}} · built on <a href="https://opencode.ai">OpenCode</a></span>
+        <div class="links">
+          <a href="docs/">Docs</a>
+          <a href="docs/changelog/">Changelog</a>
+          <a href="https://github.com/Thijmen/huubhuub">GitHub</a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="assets/site.js" defer></script>
+  </body>
+</html>
