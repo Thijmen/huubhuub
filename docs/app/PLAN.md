@@ -94,12 +94,8 @@ Invite links look like `huubhuub://pair?server=https%3A%2F%2Fhuub.example.com&co
 
 ## Build and release
 
-- `app/eas.json`: a `preview` profile that builds an APK (`android.buildType: apk`) on the `preview` channel.
 - `runtimeVersion: { policy: "fingerprint" }` so OTA updates only reach builds with matching native code.
-- GitHub Actions (`.github/workflows/app.yml`):
-  - on pull requests touching `app/`: typecheck and tests.
-  - on `main` when `app/` changed: Expo's `continuous-deploy-fingerprint` action builds a new APK when the fingerprint changed, and publishes an OTA update to the `preview` branch otherwise. The build shows up on expo.dev with an install QR code.
-- Needs `EXPO_TOKEN` as a repository secret.
+- Google Play (see [google-play.md](google-play.md)): each huubhuub release calls `.github/workflows/app-release.yml`, which builds an AAB on GitHub Actions and uploads it to the internal testing track when the fingerprint has no Play build yet, and publishes an OTA update on the `production` channel otherwise. Pull requests (`.github/workflows/app.yml`) run typecheck and tests and say which of the two the next release does. (Until November 2026 this was a sideloaded APK on the `app-android` GitHub release.)
 
 ## Status
 
@@ -107,7 +103,7 @@ Milestones 1 to 4 are built (October 2026). Milestone 1 is released (huubhuub 0.
 
 - Server: person IDs and Telegram links, invites and device tokens, the app API with live events, Telegram sync and echo, push notifications, `/app`, invites and signed-in phones on the People page. Voice notes (AAC decoded with `faad`) and photos, pin/archive/search, and the settings endpoints. Covered by tests (`src/app-api/*.test.ts`, `src/chats.test.ts`, `src/audio.test.ts`).
 - App: sign-in, conversation list with search, pinned and archived conversations, chat with live streaming, markdown, tool activity, stop, question cards, voice notes and photos, push, settings (persona, memory, reminders, spending), English and Dutch, "Zondag" theme and icons. Typechecks and bundles for Android.
-- CI: `.github/workflows/app.yml` (checks on pull requests; APK build or OTA update on main).
+- CI: `.github/workflows/app.yml` (checks on pull requests) and `.github/workflows/app-release.yml` (Google Play build or OTA update with each release).
 
 ## Milestones
 
@@ -119,12 +115,12 @@ Milestones 1 to 4 are built (October 2026). Milestone 1 is released (huubhuub 0.
 3. **Organise**: pin, archive, search (titles first, then message text).
 4. **Settings**: persona, memory (see, delete), scheduled tasks (see, pause, delete), spending against limits.
 5. **Linking**: "Link Telegram" in the app's settings (a one-time `t.me/<bot>?start=link_…` link; the bot merges the two people and allowlists the Telegram user), and "Link with…" on the admin UI's People page for anyone who shows up twice.
-6. **Later**: iOS via TestFlight, store listings, share sheet.
+6. **Later**: iOS via TestFlight, Play Store listing, share sheet.
 
 ## What Thijmen needs to do
 
-- Create an Expo account, run `bunx eas-cli init` in `app/`, and put the project ID and owner in `app/app.config.ts`. Add an access token as `EXPO_TOKEN` in the repo's Actions secrets, and build once by hand (see `app/README.md`).
-- Create a Firebase project, add an Android app with the package name `nl.thijmen.huubhuub`, upload `google-services.json` to EAS as the file variable `GOOGLE_SERVICES_JSON`, and upload an FCM v1 service account key (`eas credentials`). Without this, push doesn't work on Android.
+- Create an Expo account, run `bunx eas-cli init` in `app/`, and put the project ID and owner in `app/app.config.ts`. Add an access token as `EXPO_TOKEN` in the repo's Actions secrets. Google Play: follow [google-play.md](google-play.md).
+- Create a Firebase project, add an Android app with the package name `nl.thijmen.huubhuub`, add `google-services.json` as the repository secret `GOOGLE_SERVICES_JSON`, and upload an FCM v1 service account key (`eas credentials`). Without this, push doesn't work on Android.
 - Pick a hostname for the app API (e.g. `huub-app.<domain>`), route it to `APP_PORT` in the cluster with TLS, and set `APP_PUBLIC_URL`.
 - Voice notes in the app need the same AWS credentials Telegram voice notes already use.
 

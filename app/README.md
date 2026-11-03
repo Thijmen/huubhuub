@@ -41,27 +41,18 @@ and the server can't drift apart.
 
 ## Builds and updates
 
-`.github/workflows/app.yml` builds an APK on EAS when native code changes and publishes an over-the-air update
-otherwise. Pull requests say which of the two merging will do.
+The app ships with each huubhuub release (`.github/workflows/app-release.yml`, called from CI). When the native
+code changed, GitHub Actions builds an AAB and uploads it to the Google Play internal testing track; otherwise
+it publishes an over-the-air update on the `production` channel. Pull requests say which of the two the next
+release will do. Setup and details: [../docs/app/google-play.md](../docs/app/google-play.md).
 
-The app keeps itself up to date (`src/lib/updates.tsx`):
+The app's version is the bot's (the root `package.json`), and its versionCode is derived from it.
 
-- **Over-the-air updates** download at launch and whenever the app comes back to the foreground (at most every
-  20 minutes). A downloaded update starts the next time the app is opened after five minutes away, or on a cold
-  start, so it never reloads while someone is typing. Settings → Check for updates does it right away.
-- **New APKs** can't arrive over the air. CI publishes each one on the rolling GitHub release `app-android`
-  (`huubhuub.apk`, plus `latest.json` with its version code and fingerprint). The app checks `latest.json` and,
-  when there's a newer build with different native code, shows a card with a download button; installing over
-  the old app keeps you signed in. Forks point their builds at their own release with
-  `EXPO_PUBLIC_APP_RELEASES` (an EAS environment variable). Run the workflow by hand to republish the current
-  APK, e.g. after setting this up: EAS's own download links expire after a few weeks.
+**Over-the-air updates** (`src/lib/updates.tsx`) download at launch and whenever the app comes back to the
+foreground (at most every 20 minutes). A downloaded update starts the next time the app is opened after five
+minutes away, or on a cold start, so it never reloads while someone is typing. Settings → Check for updates
+does it right away. New native versions come from Google Play, which updates the app itself.
 
-One-time setup:
-
-1. `bunx eas-cli login`, then `bunx eas-cli init` and put the project ID and owner in `app.config.ts`
-   (`OFFICIAL_PROJECT_ID`, `OFFICIAL_OWNER`).
-2. Firebase: create a project, add an Android app `nl.thijmen.huubhuub`, and upload `google-services.json` to EAS
-   as a file environment variable named `GOOGLE_SERVICES_JSON` (preview environment). Upload the FCM V1
-   service account key with `bunx eas-cli credentials`.
-3. Build once by hand so EAS creates the signing key: `bunx eas-cli build --platform android --profile preview`.
-4. Add an Expo access token as the `EXPO_TOKEN` repository secret.
+Expo setup, once: `bunx eas-cli login`, then `bunx eas-cli init` and put the project ID and owner in
+`app.config.ts` (`OFFICIAL_PROJECT_ID`, `OFFICIAL_OWNER`). Upload the FCM v1 service account key for push
+with `bunx eas-cli credentials`.
