@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { api } from "./api"
 
 type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
@@ -117,7 +118,8 @@ export function Modal({ title, subtitle, onClose, children, wide }: { title: Rea
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
-  return (
+  // Rendered on <body>: cards use backdrop-filter, which would otherwise pin a modal opened inside one to that card.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${wide ? "modal-wide" : ""}`}>
         <div className="modal-head">
@@ -131,7 +133,8 @@ export function Modal({ title, subtitle, onClose, children, wide }: { title: Rea
         </div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
