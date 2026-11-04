@@ -1,5 +1,11 @@
 # huubhuub
 
+## 0.7.3
+
+### Patch Changes
+
+- [#79](https://github.com/Thijmen/huubhuub/pull/79) [`2697e6e`](https://github.com/Thijmen/huubhuub/commit/2697e6e69c88f80c0f751a8d94b69071152fd223) Thanks [@Thijmen](https://github.com/Thijmen)! - The app's new-conversation picker now shows each person's name (or the group's title) instead of a raw chat ID, and marks app chats as such.
+
 ## 0.7.2
 
 ### Patch Changes
