@@ -314,6 +314,10 @@ export interface ThreadRow {
   userId: number | null
   /** Display name of that user: their name, @username or "user <id>". */
   user: string | null
+  /** The chat lives in the app rather than Telegram. */
+  app: boolean
+  /** Telegram title of a group chat; null for private and app chats. */
+  chatTitle: string | null
 }
 
 export type Tokens = { input: number; output: number; reasoning: number; cache: { read: number; write: number } }

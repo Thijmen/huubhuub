@@ -109,8 +109,17 @@ export function ThreadsPage({ selected, open }: { selected?: string; open: (sess
 }
 
 function NewConversation({ threads, onClose, onCreated }: { threads: ThreadRow[]; onClose: () => void; onCreated: (sessionID: string) => void }) {
-  const chats = useMemo(() => [...new Set(threads.map((t) => t.chatId))], [threads])
-  const [chatId, setChatId] = useState(chats[0]!)
+  const chats = useMemo(() => {
+    const byId = new Map<number, { id: number; name: string; kind: string }>()
+    for (const t of threads) {
+      const prev = byId.get(t.chatId)
+      if (prev && prev.name !== String(t.chatId)) continue
+      const kind = t.app ? "app" : t.chatId > 0 ? "private" : "group"
+      byId.set(t.chatId, { id: t.chatId, name: (t.chatId < 0 ? t.chatTitle : t.user) ?? String(t.chatId), kind })
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind))
+  }, [threads])
+  const [chatId, setChatId] = useState(chats[0]!.id)
   const { busy, run } = useAction()
   const submit = async () => {
     const res = await run("create", () => api<{ sessionID: string }>("POST", "/api/threads", { chatId }), "Conversation started")
@@ -120,10 +129,10 @@ function NewConversation({ threads, onClose, onCreated }: { threads: ThreadRow[]
     <Modal title="New conversation" subtitle="Opens a fresh Telegram topic when the chat has threads, otherwise starts a new session in place." onClose={onClose}>
       <div className="stack">
         <div className="chips">
-          {chats.map((id) => (
-            <button key={id} className={`chip ${id === chatId ? "active" : ""}`} onClick={() => setChatId(id)}>
-              <span className="mono">{id}</span>
-              <span className="muted small">{id > 0 ? "private" : "group"}</span>
+          {chats.map((c) => (
+            <button key={c.id} className={`chip ${c.id === chatId ? "active" : ""}`} onClick={() => setChatId(c.id)} title={`Chat ${c.id}`}>
+              <span className={c.name === String(c.id) ? "mono" : undefined}>{c.name}</span>
+              <span className="muted small">{c.kind}</span>
             </button>
           ))}
         </div>
