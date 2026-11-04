@@ -14,7 +14,7 @@ import type { Scheduler } from "../scheduler"
 import type { GitHubAccess } from "../github-access"
 import type { GitHubApp } from "../github-app"
 import { SkillError, type SkillSources } from "../skills"
-import { MEMORY_MODES, type ChatState, type MemoryMode, type Schedule, type Store } from "../store"
+import { isAppChat, MEMORY_MODES, type ChatState, type MemoryMode, type Schedule, type Store } from "../store"
 import { conversation, eventStream, toolCalls } from "./chat"
 import type { SpendLimits } from "../spend-limits"
 import type { Usage } from "../usage"
@@ -713,6 +713,8 @@ async function threadRows(d: Deps, rows: ChatState[]) {
         busy: r.sessionID in active,
         userId,
         user: userId === null ? null : displayName(d.store.person(userId) ?? { id: userId, name: null, username: null }),
+        app: isAppChat(r.chatId),
+        chatTitle: r.chatId < 0 ? await chatTitle(d, r.chatId) : null,
       }
     }),
   )
